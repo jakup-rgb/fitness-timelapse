@@ -172,7 +172,9 @@ export default function Home() {
                 gap: 10,
               }}
             >
-              <div style={{ fontSize: 56, fontWeight: 800, lineHeight: 1 }}>{streak}</div>
+              <div style={{ fontSize: 56, fontWeight: 800, lineHeight: 1 }}>
+                {streak}
+              </div>
               <div style={{ fontSize: 18, opacity: 0.85 }}>Tage Streak</div>
             </div>
           )}
@@ -203,169 +205,199 @@ export default function Home() {
           <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
         </Card>
       ) : (
-        <div
-          style={{
-            // Container hat meist Padding – damit wir "bis zum Rand" kommen:
-            marginLeft: -16,
-            marginRight: -16,
-
-            marginTop: 14,
-          }}
-        >
+        <>
           <div
             style={{
-              display: "flex",
-              gap: 14,
-
-              overflowX: "auto",
-              WebkitOverflowScrolling: "touch",
-              scrollSnapType: "x mandatory",
-
-              // Peek: links/rechts Platz lassen, damit man den nächsten Slide sieht
-              paddingLeft: 18,
-              paddingRight: 18,
-              paddingBottom: 6,
-
-              // scrollbar verstecken (iOS/Chrome)
-              scrollbarWidth: "none",
+              // Container hat meist Padding – damit wir "bis zum Rand" kommen:
+              marginLeft: -16,
+              marginRight: -16,
+              marginTop: 14,
             }}
           >
-            {/* @ts-ignore - für WebKit scrollbar */}
-            <style>{`
-              .snapRow::-webkit-scrollbar { display: none; }
-            `}</style>
-
-            {/* Start Slide */}
             <div
               style={{
-                flex: "0 0 86%",
-                maxWidth: 520,
+                display: "flex",
+                gap: 14,
 
-                scrollSnapAlign: "center",
+                overflowX: "auto",
+                WebkitOverflowScrolling: "touch",
+                scrollSnapType: "x mandatory",
 
-                borderRadius: 18,
-                overflow: "hidden",
-                background: "#000",
-                position: "relative",
+                // Peek: links/rechts Platz lassen, damit man den nächsten Slide sieht
+                paddingLeft: 18,
+                paddingRight: 18,
+                paddingBottom: 6,
 
-                // wirkt "größer" (fast untere Hälfte)
-                height: "56vh",
-                minHeight: 420,
+                // scrollbar verstecken (iOS/Chrome)
+                scrollbarWidth: "none",
               }}
             >
+              {/* @ts-ignore - für WebKit scrollbar */}
+              <style>{`
+                .snapRow::-webkit-scrollbar { display: none; }
+              `}</style>
+
+              {/* Start Slide */}
               <div
                 style={{
-                  position: "absolute",
-                  top: 10,
-                  left: 12,
-                  right: 12,
-                  zIndex: 2,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  fontSize: 12,
-                  opacity: 0.9,
-                  color: "white",
-                  textShadow: "0 1px 10px rgba(0,0,0,0.6)",
+                  flex: "0 0 86%",
+                  maxWidth: 520,
+
+                  scrollSnapAlign: "center",
+
+                  borderRadius: 18,
+                  overflow: "hidden",
+                  background: "#000",
+                  position: "relative",
+
+                  height: "56vh",
+                  minHeight: 420,
                 }}
               >
-                <div>
-                  Start{" "}
-                  {firstPhoto ? `• ${new Date(firstPhoto.date).toLocaleDateString()}` : ""}
-                </div>
-              </div>
-
-              {firstUrl && (
-                <img
-                  src={firstUrl}
-                  alt="first"
+                <div
                   style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    display: "block",
+                    position: "absolute",
+                    top: 10,
+                    left: 12,
+                    right: 12,
+                    zIndex: 2,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    fontSize: 12,
+                    opacity: 0.9,
+                    color: "white",
+                    textShadow: "0 1px 10px rgba(0,0,0,0.6)",
+                  }}
+                >
+                  <div>
+                    Start{" "}
+                    {firstPhoto
+                      ? `• ${new Date(firstPhoto.date).toLocaleDateString()}`
+                      : ""}
+                  </div>
+                </div>
+
+                {firstUrl && (
+                  <img
+                    src={firstUrl}
+                    alt="first"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      display: "block",
+                    }}
+                  />
+                )}
+
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 90,
+                    background:
+                      "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
                   }}
                 />
-              )}
+              </div>
 
-              {/* leichter Glow/Overlay oben, damit Text immer lesbar ist */}
+              {/* Heute Slide */}
               <div
                 style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 90,
-                  background: "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
-                }}
-              />
-            </div>
+                  flex: "0 0 86%",
+                  maxWidth: 520,
 
-            {/* Heute Slide */}
-            <div
-              style={{
-                flex: "0 0 86%",
-                maxWidth: 520,
+                  scrollSnapAlign: "center",
 
-                scrollSnapAlign: "center",
+                  borderRadius: 18,
+                  overflow: "hidden",
+                  background: "#000",
+                  position: "relative",
 
-                borderRadius: 18,
-                overflow: "hidden",
-                background: "#000",
-                position: "relative",
-
-                height: "56vh",
-                minHeight: 420,
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  top: 10,
-                  left: 12,
-                  right: 12,
-                  zIndex: 2,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  fontSize: 12,
-                  opacity: 0.9,
-                  color: "white",
-                  textShadow: "0 1px 10px rgba(0,0,0,0.6)",
+                  height: "56vh",
+                  minHeight: 420,
                 }}
               >
-                <div>
-                  Heute{" "}
-                  {latestPhoto ? `• ${new Date(latestPhoto.date).toLocaleDateString()}` : ""}
-                </div>
-              </div>
-
-              {latestUrl && (
-                <img
-                  src={latestUrl}
-                  alt="latest"
+                <div
                   style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    display: "block",
+                    position: "absolute",
+                    top: 10,
+                    left: 12,
+                    right: 12,
+                    zIndex: 2,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    fontSize: 12,
+                    opacity: 0.9,
+                    color: "white",
+                    textShadow: "0 1px 10px rgba(0,0,0,0.6)",
+                  }}
+                >
+                  <div>
+                    Heute{" "}
+                    {latestPhoto
+                      ? `• ${new Date(latestPhoto.date).toLocaleDateString()}`
+                      : ""}
+                  </div>
+                </div>
+
+                {latestUrl && (
+                  <img
+                    src={latestUrl}
+                    alt="latest"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      display: "block",
+                    }}
+                  />
+                )}
+
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 90,
+                    background:
+                      "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
                   }}
                 />
-              )}
-
-              <div
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 90,
-                  background: "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
-                }}
-              />
+              </div>
             </div>
           </div>
-        </div>
+
+          {/* ✅ BUTTON UNTER DEN BILDERN */}
+          <div
+            style={{
+              marginTop: 22,
+              display: "flex",
+              justifyContent: "center",
+            }}
+          >
+            <a
+              href="/timelapse" // 🔁 Ziel ändern, wenn du willst (z.B. /next)
+              style={{
+                padding: "16px 32px",
+                borderRadius: 999,
+                background: "white",
+                color: "black",
+                fontWeight: 800,
+                fontSize: 16,
+                textDecoration: "none",
+                boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+              }}
+            >
+              Weiter →
+            </a>
+          </div>
+        </>
       )}
     </Container>
   );
