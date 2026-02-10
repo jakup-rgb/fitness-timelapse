@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Container, Topbar, ButtonLink, Card } from "../ui";
 import { addPhoto } from "../lib/db";
 
+type FacingMode = "user" | "environment";
+
 export default function CameraPage() {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -12,32 +14,73 @@ export default function CameraPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [starting, setStarting] = useState(true);
+
+  const [facingMode, setFacingMode] = useState<FacingMode>("user");
+
+  function stopStream() {
+    const v = videoRef.current;
+    const src = v?.srcObject;
+    if (src && src instanceof MediaStream) {
+      src.getTracks().forEach((t) => t.stop());
+    }
+    if (v) v.srcObject = null;
+  }
+
+  async function startCamera(mode: FacingMode) {
+    setStarting(true);
+    setError(null);
+
+    try {
+      stopStream();
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: mode }, // "user" oder "environment"
+        },
+        audio: false,
+      });
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => {});
+      }
+    } catch {
+      // Fallback: wenn "environment" nicht geht, probier "user"
+      if (mode === "environment") {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: "user" } },
+            audio: false,
+          });
+
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            await videoRef.current.play().catch(() => {});
+          }
+
+          setFacingMode("user");
+          setError("Rückkamera nicht verfügbar – auf Frontkamera gewechselt.");
+          return;
+        } catch {
+          // weiter unten Fehler setzen
+        }
+      }
+
+      setError("Kamera konnte nicht gestartet werden. Bitte Berechtigung prüfen.");
+    } finally {
+      setStarting(false);
+    }
+  }
 
   useEffect(() => {
-    async function startCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
-          audio: false,
-        });
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (err) {
-        setError("Kamera konnte nicht gestartet werden. Bitte Berechtigung prüfen.");
-      }
-    }
-
-    startCamera();
+    startCamera(facingMode);
 
     return () => {
-      if (videoRef.current?.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach((t) => t.stop());
-      }
+      stopStream();
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facingMode]);
 
   async function takePhoto() {
     if (!videoRef.current || !canvasRef.current) return;
@@ -84,122 +127,169 @@ export default function CameraPage() {
     );
   }
 
+  function toggleCamera() {
+    setFacingMode((m) => (m === "user" ? "environment" : "user"));
+  }
+
   return (
     <Container>
       <Topbar title="Kamera" right={<ButtonLink href="/">Zurück</ButtonLink>} />
 
       <Card>
-        {error ? (
-          <p style={{ margin: 0, color: "red" }}>{error}</p>
-        ) : (
-          <>
-            {/* Video + Overlay Guide */}
+        {error ? <p style={{ margin: 0, color: "red" }}>{error}</p> : null}
+
+        {/* Video + Overlay Guide */}
+        <div
+          style={{
+            marginTop: error ? 10 : 0,
+            position: "relative",
+            width: "100%",
+            height: 420,
+            borderRadius: 12,
+            overflow: "hidden",
+            background: "#000",
+            opacity: starting ? 0.7 : 1,
+          }}
+        >
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+              transform: facingMode === "user" ? "scaleX(-1)" : "none",
+            }}
+          />
+
+          {/* ✅ Kamera-Wechsel Button als Overlay (immer sichtbar auf Handy) */}
+          <button
+            onClick={toggleCamera}
+            disabled={saving || starting}
+            style={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              zIndex: 20,
+              padding: "10px 12px",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.25)",
+              background: "rgba(0,0,0,0.45)",
+              color: "white",
+              cursor: saving || starting ? "not-allowed" : "pointer",
+              fontSize: 14,
+              opacity: saving || starting ? 0.6 : 1,
+              backdropFilter: "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
+            }}
+            aria-label="Kamera wechseln"
+            title="Kamera wechseln"
+          >
+            ↺ Kamera
+          </button>
+
+          {/* Overlay */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              opacity: 0.55,
+            }}
+          >
+            {/* Rahmen */}
             <div
               style={{
-                position: "relative",
-                width: "100%",
-                height: 420,
-                borderRadius: 12,
-                overflow: "hidden",
-                background: "#000",
+                position: "absolute",
+                inset: 16,
+                borderRadius: 16,
+                border: "2px solid rgba(255,255,255,0.7)",
               }}
-            >
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                  display: "block",
-                }}
-              />
+            />
 
-              {/* Overlay */}
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  pointerEvents: "none",
-                  opacity: 0.55,
-                }}
-              >
-                {/* Rahmen */}
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 16,
-                    borderRadius: 16,
-                    border: "2px solid rgba(255,255,255,0.7)",
-                  }}
-                />
-
-                {/* Center-Linie */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    bottom: 0,
-                    left: "50%",
-                    width: 2,
-                    transform: "translateX(-1px)",
-                    background: "rgba(255,255,255,0.35)",
-                  }}
-                />
-
-                {/* Head-Kreis */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 60,
-                    left: "50%",
-                    width: 90,
-                    height: 90,
-                    transform: "translateX(-50%)",
-                    borderRadius: "50%",
-                    border: "2px solid rgba(255,255,255,0.6)",
-                  }}
-                />
-
-                {/* Schulterlinie */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 170,
-                    left: "50%",
-                    width: 220,
-                    height: 2,
-                    transform: "translateX(-50%)",
-                    background: "rgba(255,255,255,0.35)",
-                  }}
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={takePhoto}
-              disabled={saving}
+            {/* Center-Linie */}
+            <div
               style={{
-                marginTop: 12,
-                width: "100%",
-                padding: "12px",
-                borderRadius: 12,
-                border: "1px solid rgba(0,0,0,0.15)",
-                background: "transparent",
-                cursor: saving ? "not-allowed" : "pointer",
-                fontSize: 16,
-                opacity: saving ? 0.6 : 1,
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                left: "50%",
+                width: 2,
+                transform: "translateX(-1px)",
+                background: "rgba(255,255,255,0.35)",
+              }}
+            />
+
+            {/* Head-Kreis */}
+            <div
+              style={{
+                position: "absolute",
+                top: 60,
+                left: "50%",
+                width: 90,
+                height: 90,
+                transform: "translateX(-50%)",
+                borderRadius: "50%",
+                border: "2px solid rgba(255,255,255,0.6)",
+              }}
+            />
+
+            {/* Schulterlinie */}
+            <div
+              style={{
+                position: "absolute",
+                top: 170,
+                left: "50%",
+                width: 220,
+                height: 2,
+                transform: "translateX(-50%)",
+                background: "rgba(255,255,255,0.35)",
+              }}
+            />
+          </div>
+
+          {starting && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "rgba(255,255,255,0.85)",
+                fontSize: 14,
+                background: "rgba(0,0,0,0.25)",
               }}
             >
-              {saving ? "Speichere..." : "Foto machen"}
-            </button>
+              Kamera startet…
+            </div>
+          )}
+        </div>
 
-            {/* verstecktes Canvas für den Snapshot */}
-            <canvas ref={canvasRef} style={{ display: "none" }} />
-          </>
-        )}
+        {/* Foto-Button */}
+        <button
+          onClick={takePhoto}
+          disabled={saving || starting}
+          style={{
+            marginTop: 12,
+            width: "100%",
+            padding: "12px",
+            borderRadius: 12,
+            border: "1px solid rgba(0,0,0,0.15)",
+            background: "transparent",
+            cursor: saving || starting ? "not-allowed" : "pointer",
+            fontSize: 16,
+            opacity: saving || starting ? 0.6 : 1,
+          }}
+        >
+          {saving ? "Speichere..." : "Foto machen"}
+        </button>
+
+        {/* verstecktes Canvas für den Snapshot */}
+        <canvas ref={canvasRef} style={{ display: "none" }} />
       </Card>
     </Container>
   );
