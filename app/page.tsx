@@ -215,7 +215,7 @@ export default function Home() {
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr",
                 gap: 12,
-                maxWidth: 720,
+                maxWidth: 900,
                 margin: "0 auto",
               }}
             >
