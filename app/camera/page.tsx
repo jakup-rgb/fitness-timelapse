@@ -18,7 +18,20 @@ export default function CameraPage() {
 
   const [facingMode, setFacingMode] = useState<FacingMode>("user");
 
-  // Hilfsfunktion: Alle MediaStream-Tracks stoppen und Video-Element zurücksetzen
+  // Double-tap to flip camera (mobile)
+  const lastTapRef = useRef<number>(0);
+
+  function handleTapToFlip() {
+    const now = Date.now();
+    const delta = now - lastTapRef.current;
+
+    // double-tap within ~320ms
+    if (delta > 0 && delta < 320) {
+      toggleCamera();
+    }
+    lastTapRef.current = now;
+  }
+
   function stopStream() {
     const v = videoRef.current;
     const src = v?.srcObject;
@@ -28,25 +41,23 @@ export default function CameraPage() {
     if (v) v.srcObject = null;
   }
 
-  // Kamera starten mit gewünschtem Modus, mit Fallback-Logik
   async function startCamera(mode: FacingMode) {
     setStarting(true);
     setError(null);
 
-    // Erstmal alle alten Streams stoppen, bevor wir einen neuen starten
     try {
       stopStream();
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { ideal: mode }, // "user" oder "environment"
+          facingMode: { ideal: mode }, // "user" (front) oder "environment" (back)
         },
         audio: false,
       });
 
-      // Wenn das klappt, direkt im Video-Element anzeigen
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // iOS Safari braucht manchmal play() nach srcObject setzen
         await videoRef.current.play().catch(() => {});
       }
     } catch {
@@ -54,7 +65,7 @@ export default function CameraPage() {
       if (mode === "environment") {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: "user" } },
+            video: { facingMode: { ideal: "user" } }, // ✅ fallback auf Frontkamera
             audio: false,
           });
 
@@ -63,7 +74,6 @@ export default function CameraPage() {
             await videoRef.current.play().catch(() => {});
           }
 
-          // Und den Modus im State anpassen, damit die UI das auch weiß
           setFacingMode("user");
           setError("Rückkamera nicht verfügbar – auf Frontkamera gewechselt.");
           return;
@@ -78,22 +88,6 @@ export default function CameraPage() {
     }
   }
 
-  const lastTapRef = useRef<number>(0);
-
-function handleTapToFlip() {
-  const now = Date.now();
-  const delta = now - lastTapRef.current;
-
-  // Doppeltap innerhalb 280ms
-  if (delta > 0 && delta < 280) {
-    toggleCamera();
-  }
-
-  lastTapRef.current = now;
-}
-
-
-  // Beim Laden der Seite Kamera starten, und beim Verlassen alle Streams stoppen
   useEffect(() => {
     startCamera(facingMode);
 
@@ -103,7 +97,6 @@ function handleTapToFlip() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facingMode]);
 
-  // Foto aufnehmen: Aktuelles Videobild auf Canvas zeichnen, als Blob speichern und in DB hochladen
   async function takePhoto() {
     if (!videoRef.current || !canvasRef.current) return;
 
@@ -113,7 +106,7 @@ function handleTapToFlip() {
     const w = video.videoWidth;
     const h = video.videoHeight;
 
-    if (!w || !h) { 
+    if (!w || !h) {
       setError("Kamera ist noch nicht bereit. Versuch’s in 1 Sekunde nochmal.");
       return;
     }
@@ -163,7 +156,11 @@ function handleTapToFlip() {
         {/* Video + Overlay Guide */}
         <div
           onTouchEnd={handleTapToFlip}
-          onDoubleClick={toggleCamera}
+          onClick={(e) => {
+            // iOS fires "click" events after taps; detail===2 catches double-tap as well
+            if ((e as any).detail === 2) toggleCamera();
+          }}
+          onDoubleClick={toggleCamera} // desktop
           style={{
             marginTop: error ? 10 : 0,
             position: "relative",
@@ -173,6 +170,11 @@ function handleTapToFlip() {
             overflow: "hidden",
             background: "#000",
             opacity: starting ? 0.7 : 1,
+
+            // helps mobile: avoid double-tap zoom & make taps reliable
+            touchAction: "manipulation",
+            WebkitTapHighlightColor: "transparent",
+            userSelect: "none",
           }}
         >
           <video
@@ -185,7 +187,10 @@ function handleTapToFlip() {
               height: "100%",
               objectFit: "cover",
               display: "block",
+              // Frontkamera fühlt sich natürlicher an (Spiegel).
               transform: facingMode === "user" ? "scaleX(-1)" : "none",
+              // wichtig: damit der Wrapper die taps bekommt (iOS frisst sonst oft events am video)
+              pointerEvents: "none",
             }}
           />
 
