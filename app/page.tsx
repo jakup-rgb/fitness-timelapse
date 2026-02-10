@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { deletePhoto, getAllPhotos, type PhotoEntry } from "./lib/db";
+import { getAllPhotos, type PhotoEntry } from "./lib/db";
 import { Container, Topbar, ButtonLink, Card } from "./ui";
 
 function dayKey(date: Date) {
@@ -35,7 +35,6 @@ export default function Home() {
 
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // URLs für erstes + letztes Foto
   const [firstUrl, setFirstUrl] = useState<string | null>(null);
   const [latestUrl, setLatestUrl] = useState<string | null>(null);
 
@@ -46,7 +45,7 @@ export default function Home() {
   );
 
   async function refresh() {
-    const all = await getAllPhotos(); // bei dir: neueste -> älteste
+    const all = await getAllPhotos(); // neueste -> älteste
     setPhotos(all);
 
     const stats = computeStats(all);
@@ -83,7 +82,6 @@ export default function Home() {
 
   // URLs erzeugen + sauber revoken
   useEffect(() => {
-    // cleanup alt
     if (firstUrl) URL.revokeObjectURL(firstUrl);
     if (latestUrl) URL.revokeObjectURL(latestUrl);
 
@@ -99,16 +97,6 @@ export default function Home() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstPhoto, latestPhoto]);
-
-  async function handleDeleteLatest() {
-    if (!latestPhoto) return;
-
-    const ok = confirm("Letztes Foto wirklich löschen?");
-    if (!ok) return;
-
-    await deletePhoto(latestPhoto.id);
-    await refresh();
-  }
 
   return (
     <Container>
@@ -204,112 +192,118 @@ export default function Home() {
         </Card>
       )}
 
-      {/* Zwei Slides: Erstes vs Neuestes */}
-      <Card>
-        {photos.length === 0 ? (
+      {/* Full-bleed Bildbereich (bis zum Rand, keine Box) */}
+      {photos.length === 0 ? (
+        <Card>
           <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
-        ) : (
-          <>
+        </Card>
+      ) : (
+        <div
+          style={{
+            // Full-bleed trick: egal wie viel Padding dein Container hat
+            width: "100vw",
+            marginLeft: "calc(50% - 50vw)",
+            marginRight: "calc(50% - 50vw)",
+            marginTop: 14,
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 10,
+              paddingLeft: 10,
+              paddingRight: 10,
+              // macht den Bereich groß (fast untere Hälfte)
+              height: "min(62vh, 640px)",
+            }}
+          >
+            {/* Erstes Foto */}
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-                maxWidth: 900,
-                margin: "0 auto",
+                position: "relative",
+                borderRadius: 22,
+                overflow: "hidden",
+                background: "#000",
               }}
             >
-              {/* Erstes Foto */}
               <div
                 style={{
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.04)",
-                  padding: 10,
+                  position: "absolute",
+                  top: 10,
+                  left: 10,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  background: "rgba(0,0,0,0.45)",
+                  color: "rgba(255,255,255,0.9)",
+                  fontSize: 12,
+                  backdropFilter: "blur(6px)",
+                  WebkitBackdropFilter: "blur(6px)",
+                  zIndex: 2,
                 }}
               >
-                <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>
-                  Start{" "}
-                  {firstPhoto
-                    ? `• ${new Date(firstPhoto.date).toLocaleDateString()}`
-                    : ""}
-                </div>
-
-                <div  
-                  style={{
-                    width: "100%",
-                    height: 380,
-                    borderRadius: 12,
-                    overflow: "hidden",
-                    background: "#000",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {firstUrl ? (
-                    <img
-                      src={firstUrl}
-                      alt="first"
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "contain",
-                        display: "block",
-                      }}
-                    />
-                  ) : null}
-                </div>
+                Start{" "}
+                {firstPhoto ? `• ${new Date(firstPhoto.date).toLocaleDateString()}` : ""}
               </div>
 
-              {/* Neuestes Foto */}
-              <div
-                style={{
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.04)",
-                  padding: 10,
-                }}
-              >
-                <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>
-                  Heute{" "}
-                  {latestPhoto
-                    ? `• ${new Date(latestPhoto.date).toLocaleDateString()}`
-                    : ""}
-                </div>
-
-                <div
+              {firstUrl ? (
+                <img
+                  src={firstUrl}
+                  alt="first"
                   style={{
                     width: "100%",
-                    height: 380,
-                    borderRadius: 12,
-                    overflow: "hidden",
-                    background: "#000",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: "block",
                   }}
-                >
-                  {latestUrl ? (
-                    <img
-                      src={latestUrl}
-                      alt="latest"
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "contain",
-                        display: "block",
-                      }}
-                    />
-                  ) : null}
-                </div>
-              </div>
+                />
+              ) : null}
             </div>
 
-            {/* Aktionen unten (wie vorher) */}
-          </>
-        )}
-      </Card>
+            {/* Neuestes Foto */}
+            <div
+              style={{
+                position: "relative",
+                borderRadius: 22,
+                overflow: "hidden",
+                background: "#000",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: 10,
+                  left: 10,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  background: "rgba(0,0,0,0.45)",
+                  color: "rgba(255,255,255,0.9)",
+                  fontSize: 12,
+                  backdropFilter: "blur(6px)",
+                  WebkitBackdropFilter: "blur(6px)",
+                  zIndex: 2,
+                }}
+              >
+                Heute{" "}
+                {latestPhoto ? `• ${new Date(latestPhoto.date).toLocaleDateString()}` : ""}
+              </div>
+
+              {latestUrl ? (
+                <img
+                  src={latestUrl}
+                  alt="latest"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: "block",
+                  }}
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </Container>
   );
 }
