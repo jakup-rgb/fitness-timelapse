@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getAllPhotos, type PhotoEntry } from "./lib/db";
+import { deletePhoto, getAllPhotos, type PhotoEntry } from "./lib/db";
 import { Container, Topbar, ButtonLink, Card } from "./ui";
 
 function dayKey(date: Date) {
@@ -25,6 +25,79 @@ function computeStats(all: PhotoEntry[]) {
   return { totalDays, streak };
 }
 
+function PhotoSlide({
+  label,
+  date,
+  url,
+}: {
+  label: string;
+  date?: string;
+  url: string | null;
+}) {
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ fontSize: 12, opacity: 0.7 }}>
+        {label}
+        {date ? ` • ${new Date(date).toLocaleDateString()}` : ""}
+      </div>
+
+      {/* Swipe/Pan Frame */}
+      <div
+        style={{
+          width: "100%",
+          height: "52vh", // nimmt fast die ganze untere Hälfte ein (auf Handy sehr gut)
+          minHeight: 420, // am Desktop nicht zu klein
+          maxHeight: 620,
+          borderRadius: 18,
+          overflow: "auto", // <-- swipe/ziehen
+          background: "#000",
+          WebkitOverflowScrolling: "touch",
+          scrollbarWidth: "none", // Firefox
+          msOverflowStyle: "none", // IE/Edge legacy
+          border: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        {/* Scrollbar verstecken (WebKit) */}
+        <style>{`
+          .hideScroll::-webkit-scrollbar { display: none; }
+        `}</style>
+
+        <div
+          className="hideScroll"
+          style={{
+            width: "100%",
+            height: "100%",
+            overflow: "auto",
+            WebkitOverflowScrolling: "touch",
+            touchAction: "pan-x pan-y", // wichtig fürs Swipen
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+          }}
+        >
+          {url ? (
+            <img
+              src={url}
+              alt={label}
+              style={{
+                // absichtlich größer als der Frame -> du kannst swipen/ziehen
+                width: "135%",
+                height: "135%",
+                objectFit: "cover",
+                display: "block",
+              }}
+              draggable={false}
+            />
+          ) : null}
+        </div>
+      </div>
+
+      <div style={{ fontSize: 11, opacity: 0.55 }}>
+        Tipp: Zieh im Bild, um den Rand zu sehen
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [reminderTime, setReminderTime] = useState<string | null>(null);
@@ -45,7 +118,7 @@ export default function Home() {
   );
 
   async function refresh() {
-    const all = await getAllPhotos(); // neueste -> älteste
+    const all = await getAllPhotos(); // bei dir: neueste -> älteste
     setPhotos(all);
 
     const stats = computeStats(all);
@@ -57,20 +130,17 @@ export default function Home() {
     refresh();
   }, []);
 
-  // LocalStorage Reminder-Time
   useEffect(() => {
     const rt = localStorage.getItem("reminder_time");
     setReminderTime(rt);
   }, []);
 
-  // check: heute foto?
   useEffect(() => {
     const today = dayKey(new Date());
     const todayHas = photos.some((p) => dayKey(new Date(p.date)) === today);
     setHasTodayPhoto(todayHas);
   }, [photos]);
 
-  // Auto-refresh wenn Home wieder sichtbar wird
   useEffect(() => {
     function onVisibilityChange() {
       if (document.visibilityState === "visible") refresh();
@@ -80,7 +150,6 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // URLs erzeugen + sauber revoken
   useEffect(() => {
     if (firstUrl) URL.revokeObjectURL(firstUrl);
     if (latestUrl) URL.revokeObjectURL(latestUrl);
@@ -97,6 +166,15 @@ export default function Home() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstPhoto, latestPhoto]);
+
+  async function handleDeleteLatest() {
+    if (!latestPhoto) return;
+    const ok = confirm("Letztes Foto wirklich löschen?");
+    if (!ok) return;
+
+    await deletePhoto(latestPhoto.id);
+    await refresh();
+  }
 
   return (
     <Container>
@@ -153,7 +231,7 @@ export default function Home() {
         }
       />
 
-      {/* Streak Card (bleibt wie gehabt) */}
+      {/* Streak Card */}
       <Card>
         <div style={{ textAlign: "center" }}>
           {streak === 0 ? (
@@ -192,118 +270,37 @@ export default function Home() {
         </Card>
       )}
 
-      {/* Full-bleed Bildbereich (bis zum Rand, keine Box) */}
-      {photos.length === 0 ? (
-        <Card>
-          <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
-        </Card>
-      ) : (
-        <div
-          style={{
-            // Full-bleed trick: egal wie viel Padding dein Container hat
-            width: "100vw",
-            marginLeft: "calc(50% - 50vw)",
-            marginRight: "calc(50% - 50vw)",
-            marginTop: 14,
-          }}
-        >
+      {/* Foto-Bereich Full-Bleed (bis zum Rand) */}
+      <div
+        style={{
+          marginTop: 14,
+          marginLeft: -16,
+          marginRight: -16,
+          paddingLeft: 12,
+          paddingRight: 12,
+        }}
+      >
+        {photos.length === 0 ? (
+          <Card>
+            <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
+          </Card>
+        ) : (
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
               gap: 10,
-              paddingLeft: 10,
-              paddingRight: 10,
-              // macht den Bereich groß (fast untere Hälfte)
-              height: "min(62vh, 640px)",
+              alignItems: "start",
             }}
           >
-            {/* Erstes Foto */}
-            <div
-              style={{
-                position: "relative",
-                borderRadius: 22,
-                overflow: "hidden",
-                background: "#000",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  top: 10,
-                  left: 10,
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  background: "rgba(0,0,0,0.45)",
-                  color: "rgba(255,255,255,0.9)",
-                  fontSize: 12,
-                  backdropFilter: "blur(6px)",
-                  WebkitBackdropFilter: "blur(6px)",
-                  zIndex: 2,
-                }}
-              >
-                Start{" "}
-                {firstPhoto ? `• ${new Date(firstPhoto.date).toLocaleDateString()}` : ""}
-              </div>
-
-              {firstUrl ? (
-                <img
-                  src={firstUrl}
-                  alt="first"
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    display: "block",
-                  }}
-                />
-              ) : null}
-            </div>
-
-            {/* Neuestes Foto */}
-            <div
-              style={{
-                position: "relative",
-                borderRadius: 22,
-                overflow: "hidden",
-                background: "#000",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  top: 10,
-                  left: 10,
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  background: "rgba(0,0,0,0.45)",
-                  color: "rgba(255,255,255,0.9)",
-                  fontSize: 12,
-                  backdropFilter: "blur(6px)",
-                  WebkitBackdropFilter: "blur(6px)",
-                  zIndex: 2,
-                }}
-              >
-                Heute{" "}
-                {latestPhoto ? `• ${new Date(latestPhoto.date).toLocaleDateString()}` : ""}
-              </div>
-
-              {latestUrl ? (
-                <img
-                  src={latestUrl}
-                  alt="latest"
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    display: "block",
-                  }}
-                />
-              ) : null}
-            </div>
+            <PhotoSlide label="Start" date={firstPhoto?.date} url={firstUrl} />
+            <PhotoSlide label="Heute" date={latestPhoto?.date} url={latestUrl} />
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* optional: fürs Debug/Notfall löschen */}
+      {/* <button onClick={handleDeleteLatest}>Letztes Foto löschen</button> */}
     </Container>
   );
 }
