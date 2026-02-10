@@ -235,10 +235,10 @@ export default function Home() {
                     : ""}
                 </div>
 
-                <div
+                <div  
                   style={{
                     width: "100%",
-                    height: 220,
+                    height: 380,
                     borderRadius: 12,
                     overflow: "hidden",
                     background: "#000",
@@ -281,7 +281,7 @@ export default function Home() {
                 <div
                   style={{
                     width: "100%",
-                    height: 220,
+                    height: 380,
                     borderRadius: 12,
                     overflow: "hidden",
                     background: "#000",
@@ -307,63 +307,6 @@ export default function Home() {
             </div>
 
             {/* Aktionen unten (wie vorher) */}
-            <button
-              onClick={handleDeleteLatest}
-              style={{
-                marginTop: 12,
-                width: "100%",
-                padding: "10px",
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.15)",
-                background: "transparent",
-                cursor: "pointer",
-              }}
-            >
-              Letztes Foto löschen
-            </button>
-
-            <div
-              style={{
-                marginTop: 16,
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-                maxWidth: 420,
-                marginLeft: "auto",
-                marginRight: "auto",
-              }}
-            >
-              <a
-                href="/timelapse"
-                style={{
-                  padding: "14px 16px",
-                  borderRadius: 14,
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  textAlign: "center",
-                  fontWeight: 500,
-                  textDecoration: "none",
-                  color: "white",
-                }}
-              >
-                Timelapse ansehen
-              </a>
-
-              <a
-                href="/camera"
-                style={{
-                  padding: "14px 16px",
-                  borderRadius: 14,
-                  background: "white",
-                  color: "black",
-                  fontWeight: 600,
-                  textAlign: "center",
-                  textDecoration: "none",
-                }}
-              >
-                Neues Foto
-              </a>
-            </div>
           </>
         )}
       </Card>
