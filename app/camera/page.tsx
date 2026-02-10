@@ -18,6 +18,7 @@ export default function CameraPage() {
 
   const [facingMode, setFacingMode] = useState<FacingMode>("user");
 
+  // Hilfsfunktion: Alle MediaStream-Tracks stoppen und Video-Element zurücksetzen
   function stopStream() {
     const v = videoRef.current;
     const src = v?.srcObject;
@@ -27,10 +28,12 @@ export default function CameraPage() {
     if (v) v.srcObject = null;
   }
 
+  // Kamera starten mit gewünschtem Modus, mit Fallback-Logik
   async function startCamera(mode: FacingMode) {
     setStarting(true);
     setError(null);
 
+    // Erstmal alle alten Streams stoppen, bevor wir einen neuen starten
     try {
       stopStream();
 
@@ -41,6 +44,7 @@ export default function CameraPage() {
         audio: false,
       });
 
+      // Wenn das klappt, direkt im Video-Element anzeigen
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play().catch(() => {});
@@ -59,6 +63,7 @@ export default function CameraPage() {
             await videoRef.current.play().catch(() => {});
           }
 
+          // Und den Modus im State anpassen, damit die UI das auch weiß
           setFacingMode("user");
           setError("Rückkamera nicht verfügbar – auf Frontkamera gewechselt.");
           return;
