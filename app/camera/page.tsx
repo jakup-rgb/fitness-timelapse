@@ -78,6 +78,22 @@ export default function CameraPage() {
     }
   }
 
+  const lastTapRef = useRef<number>(0);
+
+function handleTapToFlip() {
+  const now = Date.now();
+  const delta = now - lastTapRef.current;
+
+  // Doppeltap innerhalb 280ms
+  if (delta > 0 && delta < 280) {
+    toggleCamera();
+  }
+
+  lastTapRef.current = now;
+}
+
+
+  // Beim Laden der Seite Kamera starten, und beim Verlassen alle Streams stoppen
   useEffect(() => {
     startCamera(facingMode);
 
@@ -87,6 +103,7 @@ export default function CameraPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facingMode]);
 
+  // Foto aufnehmen: Aktuelles Videobild auf Canvas zeichnen, als Blob speichern und in DB hochladen
   async function takePhoto() {
     if (!videoRef.current || !canvasRef.current) return;
 
@@ -96,7 +113,7 @@ export default function CameraPage() {
     const w = video.videoWidth;
     const h = video.videoHeight;
 
-    if (!w || !h) {
+    if (!w || !h) { 
       setError("Kamera ist noch nicht bereit. Versuch’s in 1 Sekunde nochmal.");
       return;
     }
@@ -145,6 +162,8 @@ export default function CameraPage() {
 
         {/* Video + Overlay Guide */}
         <div
+          onTouchEnd={handleTapToFlip}
+          onDoubleClick={toggleCamera}
           style={{
             marginTop: error ? 10 : 0,
             position: "relative",
