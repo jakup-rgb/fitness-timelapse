@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { deletePhoto, getAllPhotos, type PhotoEntry } from "./lib/db";
+import { getAllPhotos, type PhotoEntry } from "./lib/db";
 import { Container, Topbar, ButtonLink, Card } from "./ui";
 
 function dayKey(date: Date) {
@@ -39,15 +39,17 @@ export default function Home() {
   const [firstUrl, setFirstUrl] = useState<string | null>(null);
   const [latestUrl, setLatestUrl] = useState<string | null>(null);
 
-  // bei dir: getAllPhotos() liefert neueste -> älteste
-  const latestPhoto = useMemo(() => (photos.length > 0 ? photos[0] : null), [photos]);
+  const latestPhoto = useMemo(
+    () => (photos.length > 0 ? photos[0] : null),
+    [photos]
+  );
   const firstPhoto = useMemo(
     () => (photos.length > 0 ? photos[photos.length - 1] : null),
     [photos]
   );
 
   async function refresh() {
-    const all = await getAllPhotos();
+    const all = await getAllPhotos(); // neueste -> älteste
     setPhotos(all);
 
     const stats = computeStats(all);
@@ -84,6 +86,7 @@ export default function Home() {
 
   // URLs erzeugen + sauber revoken
   useEffect(() => {
+    // cleanup alt
     if (firstUrl) URL.revokeObjectURL(firstUrl);
     if (latestUrl) URL.revokeObjectURL(latestUrl);
 
@@ -99,19 +102,6 @@ export default function Home() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstPhoto, latestPhoto]);
-
-  async function handleDeleteLatest() {
-    if (!latestPhoto) return;
-
-    const ok = confirm("Letztes Foto wirklich löschen?");
-    if (!ok) return;
-
-    await deletePhoto(latestPhoto.id);
-    await refresh();
-  }
-
-  // Wenn dein Container mehr/weniger Padding hat: anpassen
-  const BLEED = 16;
 
   return (
     <Container>
@@ -207,7 +197,7 @@ export default function Home() {
         </Card>
       )}
 
-      {/* Swipe/Peek Carousel: Start vs Heute */}
+      {/* Fullscreen Swipe Bereich (edge-to-edge, mit "peek" links/rechts) */}
       {photos.length === 0 ? (
         <Card>
           <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
@@ -215,126 +205,165 @@ export default function Home() {
       ) : (
         <div
           style={{
-            marginTop: 12,
-            marginLeft: -BLEED,
-            marginRight: -BLEED,
+            // Container hat meist Padding – damit wir "bis zum Rand" kommen:
+            marginLeft: -16,
+            marginRight: -16,
+
+            marginTop: 14,
           }}
         >
           <div
             style={{
               display: "flex",
-              gap: 12,
+              gap: 14,
+
               overflowX: "auto",
-              paddingLeft: BLEED,
-              paddingRight: BLEED,
-              paddingTop: 6,
-              paddingBottom: 6,
-              scrollSnapType: "x mandatory",
               WebkitOverflowScrolling: "touch",
-              overscrollBehaviorX: "contain",
+              scrollSnapType: "x mandatory",
+
+              // Peek: links/rechts Platz lassen, damit man den nächsten Slide sieht
+              paddingLeft: 18,
+              paddingRight: 18,
+              paddingBottom: 6,
+
+              // scrollbar verstecken (iOS/Chrome)
+              scrollbarWidth: "none",
             }}
           >
-            {/* Slide: Start */}
+            {/* @ts-ignore - für WebKit scrollbar */}
+            <style>{`
+              .snapRow::-webkit-scrollbar { display: none; }
+            `}</style>
+
+            {/* Start Slide */}
             <div
               style={{
-                flex: "0 0 82vw", // <- “peek”: nicht 100%, damit man das nächste anreißen sieht
+                flex: "0 0 86%",
                 maxWidth: 520,
+
                 scrollSnapAlign: "center",
+
                 borderRadius: 18,
-                background: "transparent",
+                overflow: "hidden",
+                background: "#000",
+                position: "relative",
+
+                // wirkt "größer" (fast untere Hälfte)
+                height: "56vh",
+                minHeight: 420,
               }}
             >
-              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8, paddingLeft: 4 }}>
-                Start{" "}
-                {firstPhoto ? `• ${new Date(firstPhoto.date).toLocaleDateString()}` : ""}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 10,
+                  left: 12,
+                  right: 12,
+                  zIndex: 2,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  fontSize: 12,
+                  opacity: 0.9,
+                  color: "white",
+                  textShadow: "0 1px 10px rgba(0,0,0,0.6)",
+                }}
+              >
+                <div>
+                  Start{" "}
+                  {firstPhoto ? `• ${new Date(firstPhoto.date).toLocaleDateString()}` : ""}
+                </div>
               </div>
+
+              {firstUrl && (
+                <img
+                  src={firstUrl}
+                  alt="first"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: "block",
+                  }}
+                />
+              )}
+
+              {/* leichter Glow/Overlay oben, damit Text immer lesbar ist */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 90,
+                  background: "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
+                }}
+              />
+            </div>
+
+            {/* Heute Slide */}
+            <div
+              style={{
+                flex: "0 0 86%",
+                maxWidth: 520,
+
+                scrollSnapAlign: "center",
+
+                borderRadius: 18,
+                overflow: "hidden",
+                background: "#000",
+                position: "relative",
+
+                height: "56vh",
+                minHeight: 420,
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: 10,
+                  left: 12,
+                  right: 12,
+                  zIndex: 2,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  fontSize: 12,
+                  opacity: 0.9,
+                  color: "white",
+                  textShadow: "0 1px 10px rgba(0,0,0,0.6)",
+                }}
+              >
+                <div>
+                  Heute{" "}
+                  {latestPhoto ? `• ${new Date(latestPhoto.date).toLocaleDateString()}` : ""}
+                </div>
+              </div>
+
+              {latestUrl && (
+                <img
+                  src={latestUrl}
+                  alt="latest"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: "block",
+                  }}
+                />
+              )}
 
               <div
                 style={{
-                  width: "100%",
-                  height: "56vh", // <- groß, nimmt “fast die ganze untere Hälfte”
-                  minHeight: 360,
-                  maxHeight: 560,
-                  borderRadius: 18,
-                  overflow: "hidden",
-                  background: "#000",
-                  boxShadow: "0 16px 50px rgba(0,0,0,0.35)",
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 90,
+                  background: "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
                 }}
-              >
-                {firstUrl ? (
-                  <img
-                    src={firstUrl}
-                    alt="first"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      display: "block",
-                    }}
-                  />
-                ) : null}
-              </div>
+              />
             </div>
-
-            {/* Slide: Heute */}
-            <div
-              style={{
-                flex: "0 0 82vw",
-                maxWidth: 520,
-                scrollSnapAlign: "center",
-                borderRadius: 18,
-                background: "transparent",
-              }}
-            >
-              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8, paddingLeft: 4 }}>
-                Heute{" "}
-                {latestPhoto ? `• ${new Date(latestPhoto.date).toLocaleDateString()}` : ""}
-              </div>
-
-              <div
-                style={{
-                  width: "100%",
-                  height: "56vh",
-                  minHeight: 360,
-                  maxHeight: 560,
-                  borderRadius: 18,
-                  overflow: "hidden",
-                  background: "#000",
-                  boxShadow: "0 16px 50px rgba(0,0,0,0.35)",
-                }}
-              >
-                {latestUrl ? (
-                  <img
-                    src={latestUrl}
-                    alt="latest"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      display: "block",
-                    }}
-                  />
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          {/* Optional: Delete-Button bleibt (falls du ihn behalten willst).
-              Wenn du den erstmal weg haben willst: einfach löschen. */}
-          <div style={{ paddingLeft: BLEED, paddingRight: BLEED, marginTop: 10 }}>
-            <button
-              onClick={handleDeleteLatest}
-              style={{
-                width: "100%",
-                padding: "10px",
-                borderRadius: 12,
-                border: "1px solid rgba(0,0,0,0.15)",
-                background: "transparent",
-                cursor: "pointer",
-              }}
-            >
-              Letztes Foto löschen
-            </button>
           </div>
         </div>
       )}
