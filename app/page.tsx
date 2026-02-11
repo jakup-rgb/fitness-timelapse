@@ -80,7 +80,8 @@ export default function Home() {
       if (document.visibilityState === "visible") refresh();
     }
     document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -158,7 +159,7 @@ export default function Home() {
         }
       />
 
-      {/* Streak Card (bleibt wie gehabt) */}
+      {/* Streak Card */}
       <Card>
         <div style={{ textAlign: "center" }}>
           {streak === 0 ? (
@@ -192,14 +193,21 @@ export default function Home() {
           <div style={{ opacity: 0.8 }}>
             Heute fehlt noch dein Foto 🙂 (eingestellt: {reminderTime})
           </div>
-          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div
+            style={{
+              marginTop: 10,
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
             <ButtonLink href="/camera">Jetzt Foto machen</ButtonLink>
             <ButtonLink href="/settings">Uhrzeit ändern</ButtonLink>
           </div>
         </Card>
       )}
 
-      {/* Fullscreen Swipe Bereich (edge-to-edge, mit "peek" links/rechts) */}
+      {/* Fullscreen Swipe Bereich */}
       {photos.length === 0 ? (
         <Card>
           <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
@@ -208,7 +216,6 @@ export default function Home() {
         <>
           <div
             style={{
-              // Container hat meist Padding – damit wir "bis zum Rand" kommen:
               marginLeft: -16,
               marginRight: -16,
               marginTop: 14,
@@ -223,16 +230,14 @@ export default function Home() {
                 WebkitOverflowScrolling: "touch",
                 scrollSnapType: "x mandatory",
 
-                // Peek: links/rechts Platz lassen, damit man den nächsten Slide sieht
                 paddingLeft: 18,
                 paddingRight: 18,
                 paddingBottom: 6,
 
-                // scrollbar verstecken (iOS/Chrome)
                 scrollbarWidth: "none",
               }}
             >
-              {/* @ts-ignore - für WebKit scrollbar */}
+              {/* @ts-ignore */}
               <style>{`
                 .snapRow::-webkit-scrollbar { display: none; }
               `}</style>
@@ -242,14 +247,11 @@ export default function Home() {
                 style={{
                   flex: "0 0 86%",
                   maxWidth: 520,
-
                   scrollSnapAlign: "center",
-
                   borderRadius: 18,
                   overflow: "hidden",
                   background: "#000",
                   position: "relative",
-
                   height: "56vh",
                   minHeight: 420,
                 }}
@@ -309,14 +311,11 @@ export default function Home() {
                 style={{
                   flex: "0 0 86%",
                   maxWidth: 520,
-
                   scrollSnapAlign: "center",
-
                   borderRadius: 18,
                   overflow: "hidden",
                   background: "#000",
                   position: "relative",
-
                   height: "56vh",
                   minHeight: 420,
                 }}
@@ -373,7 +372,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* ✅ BUTTON UNTER DEN BILDERN */}
+          {/* ✅ BUTTON UNTER DEN BILDERN (JETZT /next) */}
           <div
             style={{
               marginTop: 22,
@@ -382,7 +381,7 @@ export default function Home() {
             }}
           >
             <a
-              href="/timelapse" // 🔁 Ziel ändern, wenn du willst (z.B. /next)
+              href="/next"
               style={{
                 padding: "16px 32px",
                 borderRadius: 999,
