@@ -30,13 +30,11 @@ export default function NextPage() {
     const dx = t.clientX - sx;
     const dy = t.clientY - sy;
 
-    // nur wenn es klar horizontal ist
     const absX = Math.abs(dx);
     const absY = Math.abs(dy);
 
-    // Thresholds
-    const MIN_X = 80; // mindestens 80px nach rechts
-    const MAX_Y = 60; // nicht zu viel vertikal
+    const MIN_X = 80;
+    const MAX_Y = 60;
 
     if (dx > MIN_X && absY < MAX_Y && absX > absY) {
       router.push("/"); // zurück zum Home
@@ -60,58 +58,84 @@ export default function NextPage() {
     };
   }, []);
 
-  const itemStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "16px 16px",
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(255,255,255,0.06)",
-    color: "white",
-    textDecoration: "none",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    cursor: "pointer",
-  };
+  // Kleine Button-Komponente (ohne extra Libraries)
+  function ActionButton({
+    href,
+    icon,
+    title,
+    subtitle,
+  }: {
+    href: string;
+    icon: string;
+    title: string;
+    subtitle: string;
+  }) {
+    const [pressed, setPressed] = useState(false);
 
-  const leftStyle: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    minWidth: 0,
-  };
+    return (
+      <a
+        href={href}
+        onPointerDown={() => setPressed(true)}
+        onPointerUp={() => setPressed(false)}
+        onPointerCancel={() => setPressed(false)}
+        onPointerLeave={() => setPressed(false)}
+        style={{
+          textDecoration: "none",
+          color: "white",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 14,
+          padding: "16px 16px",
+          borderRadius: 18,
+          border: "1px solid rgba(255,255,255,0.14)",
+          background: "rgba(255,255,255,0.06)",
+          transform: pressed ? "scale(0.99)" : "scale(1)",
+          opacity: pressed ? 0.9 : 1,
+          transition: "transform 120ms ease, opacity 120ms ease",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(0,0,0,0.22)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 22,
+              flexShrink: 0,
+            }}
+          >
+            {icon}
+          </div>
 
-  const iconStyle: React.CSSProperties = {
-    fontSize: 22,
-    width: 28,
-    textAlign: "center",
-    flexShrink: 0,
-  };
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1.1 }}>
+              {title}
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 12,
+                opacity: 0.7,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {subtitle}
+            </div>
+          </div>
+        </div>
 
-  const titleStyle: React.CSSProperties = {
-    fontSize: 16,
-    fontWeight: 700,
-    lineHeight: 1.1,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  };
-
-  const subStyle: React.CSSProperties = {
-    marginTop: 4,
-    fontSize: 12,
-    opacity: 0.7,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  };
-
-  const arrowStyle: React.CSSProperties = {
-    opacity: 0.75,
-    fontSize: 18,
-    flexShrink: 0,
-  };
+        <div style={{ opacity: 0.8, fontSize: 18, flexShrink: 0 }}>›</div>
+      </a>
+    );
+  }
 
   return (
     <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
@@ -172,50 +196,35 @@ export default function NextPage() {
         />
 
         <Card>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, opacity: 0.9 }}>
+            Menü
+          </div>
+
           <div style={{ display: "grid", gap: 12 }}>
-            <a href="/timelapse" style={itemStyle}>
-              <div style={leftStyle}>
-                <div style={iconStyle}>🎞</div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={titleStyle}>Timelapse</div>
-                  <div style={subStyle}>Alle Fotos als Video anschauen</div>
-                </div>
-              </div>
-              <div style={arrowStyle}>›</div>
-            </a>
-
-            <a href="/camera" style={itemStyle}>
-              <div style={leftStyle}>
-                <div style={iconStyle}>📸</div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={titleStyle}>Bild machen</div>
-                  <div style={subStyle}>Neues Fortschrittsfoto aufnehmen</div>
-                </div>
-              </div>
-              <div style={arrowStyle}>›</div>
-            </a>
-
-            <a href="/calendar" style={itemStyle}>
-              <div style={leftStyle}>
-                <div style={iconStyle}>📆</div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={titleStyle}>Kalender</div>
-                  <div style={subStyle}>Übersicht deiner Tage & Fotos</div>
-                </div>
-              </div>
-              <div style={arrowStyle}>›</div>
-            </a>
-
-            <a href="/notes" style={itemStyle}>
-              <div style={leftStyle}>
-                <div style={iconStyle}>📝</div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={titleStyle}>Notiz</div>
-                  <div style={subStyle}>Training, Gewicht, Gedanken speichern</div>
-                </div>
-              </div>
-              <div style={arrowStyle}>›</div>
-            </a>
+            <ActionButton
+              href="/timelapse"
+              icon="🎞"
+              title="Timelapse"
+              subtitle="Dein Fortschritt als Animation"
+            />
+            <ActionButton
+              href="/camera"
+              icon="📸"
+              title="Bild machen"
+              subtitle="Neues Foto aufnehmen"
+            />
+            <ActionButton
+              href="/calendar"
+              icon="📆"
+              title="Kalender"
+              subtitle="Tage & Fotos im Überblick"
+            />
+            <ActionButton
+              href="/notes"
+              icon="📝"
+              title="Notiz"
+              subtitle="Training, Gewicht, Gedanken"
+            />
           </div>
         </Card>
 
