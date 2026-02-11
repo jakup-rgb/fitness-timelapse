@@ -4,8 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { getAllPhotos, type PhotoEntry } from "../lib/db";
 import { Container, Topbar, ButtonLink, Card } from "../ui";
 
-function dayKey(d: Date) {
-  return d.toISOString().slice(0, 10);
+function dayKeyLocal(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function startOfMonth(date: Date) {
@@ -27,13 +30,12 @@ export default function CalendarPage() {
     })();
   }, []);
 
-  // Map: dayKey -> latest photo of that day
+  // Map: dayKey(local) -> latest photo of that day
   const photoByDay = useMemo(() => {
     const map = new Map<string, PhotoEntry>();
     // all ist bei dir: neueste -> älteste
     for (const p of photos) {
-      const k = dayKey(new Date(p.date));
-      // wir nehmen das erste (neueste) pro Tag
+      const k = dayKeyLocal(new Date(p.date));
       if (!map.has(k)) map.set(k, p);
     }
     return map;
@@ -43,7 +45,7 @@ export default function CalendarPage() {
   const monthStart = useMemo(() => startOfMonth(today), [today]);
   const totalDays = useMemo(() => daysInMonth(today), [today]);
 
-  // weekday offset: 0=So ... 6=Sa
+  // weekday offset: 0=So ... 6=Sa (lokal)
   const offset = useMemo(() => monthStart.getDay(), [monthStart]);
 
   const monthLabel = useMemo(() => {
@@ -105,10 +107,10 @@ export default function CalendarPage() {
           {Array.from({ length: totalDays }).map((_, i) => {
             const dayNum = i + 1;
             const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), dayNum);
-            const key = dayKey(date);
+            const key = dayKeyLocal(date);
 
             const hasPhoto = photoByDay.has(key);
-            const isToday = key === dayKey(new Date());
+            const isToday = key === dayKeyLocal(new Date());
 
             return (
               <button
@@ -188,9 +190,7 @@ export default function CalendarPage() {
             </div>
 
             {!selectedPhoto ? (
-              <div style={{ padding: 14, opacity: 0.8 }}>
-                Kein Foto an diesem Tag.
-              </div>
+              <div style={{ padding: 14, opacity: 0.8 }}>Kein Foto an diesem Tag.</div>
             ) : (
               <div style={{ width: "100%", background: "#000" }}>
                 {modalUrl && (
