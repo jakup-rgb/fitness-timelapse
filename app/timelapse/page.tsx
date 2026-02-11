@@ -64,24 +64,35 @@ export default function TimelapsePage() {
     return () => clearInterval(timer);
   }, [urls, playing, speed]);
 
-  // Aktueller dayKey fürs Foto
-  const currentDayKey = useMemo(() => {
-    const p = photos[index];
-    if (!p) return null;
-    return localDayKey(new Date(p.date));
-  }, [photos, index]);
+function localDayKey(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
-  // Notiz für aktuellen Tag laden
-  useEffect(() => {
-    (async () => {
-      if (!currentDayKey) {
-        setNoteText(null);
-        return;
-      }
-      const n = await getNote(currentDayKey);
-      setNoteText(n?.text?.trim() ? n.text : null);
-    })();
-  }, [currentDayKey]);
+const todayKey = useMemo(() => localDayKey(new Date()), []);
+
+const currentDayKey = useMemo(() => {
+  const p = photos[index];
+  if (!p) return null;
+  return localDayKey(new Date(p.date));
+}, [photos, index]);
+
+const isTodayFrame = currentDayKey === todayKey;
+
+// Notiz nur laden, wenn aktuelles Bild = heute
+useEffect(() => {
+  (async () => {
+    if (!isTodayFrame) {
+      setNoteText(null);
+      return;
+    }
+    const n = await getNote(todayKey);
+    setNoteText(n?.text?.trim() ? n.text : null);
+  })();
+}, [isTodayFrame, todayKey]);
+
 
   return (
     <Container>
