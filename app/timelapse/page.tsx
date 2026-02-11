@@ -170,7 +170,7 @@ useEffect(() => {
             </div>
 
             {/* Notiz Anzeige */}
-            {showNote && (
+            {showNote && isTodayFrame && (
               <div
                 style={{
                   marginTop: 10,
