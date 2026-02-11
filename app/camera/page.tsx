@@ -148,7 +148,7 @@ export default function CameraPage() {
 
   return (
     <Container>
-      <Topbar title="Kamera" right={<ButtonLink href="/">Zurück</ButtonLink>} />
+      <Topbar title="Kamera" right={<ButtonLink href="/next">Zurück</ButtonLink>} />
 
       <Card>
         {error ? <p style={{ margin: 0, color: "red" }}>{error}</p> : null}

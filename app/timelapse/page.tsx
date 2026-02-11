@@ -62,7 +62,7 @@ export default function TimelapsePage() {
 
   return (
     <Container>
-      <Topbar title="Timelapse" right={<ButtonLink href="/">Zurück</ButtonLink>} />
+      <Topbar title="Timelapse" right={<ButtonLink href="/next">Zurück</ButtonLink>} />
 
       <Card>
         {urls.length === 0 ? (
