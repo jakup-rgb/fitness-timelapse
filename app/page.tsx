@@ -480,6 +480,32 @@ export default function Home() {
               >
                 Zieh nach links/rechts
               </div>
+              {/* Weiter Button */}
+<div
+  style={{
+    marginTop: 28,
+    display: "flex",
+    justifyContent: "center",
+  }}
+>
+  <a
+    href="/next"
+    style={{
+      padding: "16px 34px",
+      borderRadius: 999,
+      background: "linear-gradient(135deg, #ffffff, #dcdcdc)",
+      color: "black",
+      fontWeight: 800,
+      fontSize: 16,
+      textDecoration: "none",
+      boxShadow: "0 15px 40px rgba(0,0,0,0.45)",
+      transition: "all 0.2s ease",
+    }}
+  >
+    Weiter →
+  </a>
+</div>
+
             </div>
           </div>
         </div>
