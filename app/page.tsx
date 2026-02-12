@@ -271,108 +271,88 @@ export default function Home() {
             )}
 
             {/* Over: Heute (Reveal per Clip) */}
-            {latestUrl && (
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: `${pos}%`,
-                  overflow: "hidden",
-                }}
-              >
-                <img
-                  src={latestUrl}
-                  alt="heute"
-                  draggable={false}
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    userSelect: "none",
-                  }}
-                />
-              </div>
-            )}
+{/* Over: Heute (Reveal von der Mitte nach außen) */}
+{latestUrl && (
+  <div
+    style={{
+      position: "absolute",
+      inset: 0,
+      // Center reveal: nur Bereich [left..right] sichtbar
+      clipPath: `inset(0 ${100 - right}% 0 ${left}%)`,
+    }}
+  >
+    <img
+      src={latestUrl}
+      alt="heute"
+      draggable={false}
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        userSelect: "none",
+      }}
+    />
+  </div>
+)}
 
-            {/* Labels */}
-            <div
-              style={{
-                position: "absolute",
-                top: 12,
-                left: 12,
-                padding: "6px 10px",
-                borderRadius: 999,
-                background: "rgba(0,0,0,0.45)",
-                color: "white",
-                fontSize: 12,
-                fontWeight: 700,
-                zIndex: 5,
-              }}
-            >
-              Start
-            </div>
-            <div
-              style={{
-                position: "absolute",
-                top: 12,
-                right: 12,
-                padding: "6px 10px",
-                borderRadius: 999,
-                background: "rgba(0,0,0,0.45)",
-                color: "white",
-                fontSize: 12,
-                fontWeight: 700,
-                zIndex: 5,
-              }}
-            >
-              Heute
-            </div>
+{/* Zwei Divider-Linien (links & rechts der Reveal-Kante) */}
+<div
+  style={{
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: `${left}%`,
+    transform: "translateX(-1px)",
+    width: 2,
+    background: "rgba(255,255,255,0.9)",
+    zIndex: 6,
+  }}
+/>
+<div
+  style={{
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: `${right}%`,
+    transform: "translateX(-1px)",
+    width: 2,
+    background: "rgba(255,255,255,0.9)",
+    zIndex: 6,
+  }}
+/>
 
-            {/* Divider Line */}
-            <div
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                left: `${pos}%`,
-                transform: "translateX(-1px)",
-                width: 2,
-                background: "rgba(255,255,255,0.9)",
-                zIndex: 6,
-              }}
-            />
+{/* Handle sitzt in der Mitte (fix), du ziehst aber links/rechts */}
+<div
+  onPointerDown={onHandleDown}
+  onPointerMove={onHandleMove}
+  onPointerUp={onHandleUp}
+  onPointerCancel={onHandleUp}
+  style={{
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    transform: "translate(-50%, -50%)",
+    width: 54,
+    height: 54,
+    borderRadius: 999,
+    background: "rgba(0,0,0,0.55)",
+    border: "1px solid rgba(255,255,255,0.25)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "white",
+    fontSize: 18,
+    zIndex: 7,
+    cursor: "grab",
+    touchAction: "none",
+  }}
+  aria-label="Slider ziehen"
+>
+  ⇆
+</div>
 
-            {/* Handle (nur dieses Element ist draggable) */}
-            <div
-              onPointerDown={onHandleDown}
-              onPointerMove={onHandleMove}
-              onPointerUp={onHandleUp}
-              onPointerCancel={onHandleUp}
-              style={{
-                position: "absolute",
-                left: `${pos}%`,
-                top: "38%",
-                transform: "translate(-50%, -50%)",
-                width: 54,
-                height: 54,
-                borderRadius: 999,
-                background: "rgba(0,0,0,0.55)",
-                border: "1px solid rgba(255,255,255,0.25)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "white",
-                fontSize: 18,
-                zIndex: 7,
-                cursor: dragging.current ? "grabbing" : "grab",
-                touchAction: "none",
-              }}
-              aria-label="Slider ziehen"
-            >
-              ⇆
-            </div>
 
             <div
               style={{
