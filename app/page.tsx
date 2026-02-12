@@ -28,6 +28,10 @@ function computeStats(all: PhotoEntry[]) {
   return { totalDays, streak };
 }
 
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
 export default function Home() {
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [reminderTime, setReminderTime] = useState<string | null>(null);
@@ -38,7 +42,6 @@ export default function Home() {
 
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // URLs für erstes + letztes Foto
   const [firstUrl, setFirstUrl] = useState<string | null>(null);
   const [latestUrl, setLatestUrl] = useState<string | null>(null);
 
@@ -51,13 +54,8 @@ export default function Home() {
     [photos]
   );
 
-  // Compare Slider State
-  const [pos, setPos] = useState(50); // 0..100
-  const dragging = useRef(false);
-  const boxRef = useRef<HTMLDivElement | null>(null);
-
   async function refresh() {
-    const all = await getAllPhotos(); // neueste -> älteste
+    const all = await getAllPhotos();
     setPhotos(all);
 
     const stats = computeStats(all);
@@ -69,20 +67,17 @@ export default function Home() {
     refresh();
   }, []);
 
-  // LocalStorage Reminder-Time
   useEffect(() => {
     const rt = localStorage.getItem("reminder_time");
     setReminderTime(rt);
   }, []);
 
-  // check: heute foto?
   useEffect(() => {
     const today = dayKeyLocal(new Date());
     const todayHas = photos.some((p) => dayKeyLocal(new Date(p.date)) === today);
     setHasTodayPhoto(todayHas);
   }, [photos]);
 
-  // Auto-refresh wenn Home wieder sichtbar wird
   useEffect(() => {
     function onVisibilityChange() {
       if (document.visibilityState === "visible") refresh();
@@ -92,7 +87,6 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // URLs erzeugen + sauber revoken
   useEffect(() => {
     if (firstUrl) URL.revokeObjectURL(firstUrl);
     if (latestUrl) URL.revokeObjectURL(latestUrl);
@@ -110,7 +104,6 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstPhoto, latestPhoto]);
 
-  // Menu schließen beim Klick außerhalb
   useEffect(() => {
     function onDown(e: MouseEvent) {
       const t = e.target as HTMLElement;
@@ -120,9 +113,10 @@ export default function Home() {
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
 
-  function clamp(n: number, min: number, max: number) {
-    return Math.max(min, Math.min(max, n));
-  }
+  // --- Compare Slider state ---
+  const [pos, setPos] = useState(50); // 0..100
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const dragging = useRef(false);
 
   function updatePos(clientX: number) {
     const box = boxRef.current;
@@ -132,16 +126,17 @@ export default function Home() {
     setPos(clamp(p, 0, 100));
   }
 
-  function onPointerDown(e: React.PointerEvent) {
+  // Drag nur am Handle
+  function onHandleDown(e: React.PointerEvent) {
     dragging.current = true;
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     updatePos(e.clientX);
   }
-  function onPointerMove(e: React.PointerEvent) {
+  function onHandleMove(e: React.PointerEvent) {
     if (!dragging.current) return;
     updatePos(e.clientX);
   }
-  function onPointerUp(e: React.PointerEvent) {
+  function onHandleUp(e: React.PointerEvent) {
     dragging.current = false;
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
   }
@@ -202,7 +197,6 @@ export default function Home() {
         }
       />
 
-      {/* Streak Card */}
       <Card>
         <div style={{ textAlign: "center" }}>
           {streak === 0 ? (
@@ -229,7 +223,6 @@ export default function Home() {
         </div>
       </Card>
 
-      {/* Reminder */}
       {reminderTime && !hasTodayPhoto && (
         <Card>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Reminder</div>
@@ -243,7 +236,6 @@ export default function Home() {
         </Card>
       )}
 
-      {/* BEFORE/AFTER SLIDER (edge-to-edge) */}
       {photos.length === 0 ? (
         <Card>
           <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
@@ -252,10 +244,6 @@ export default function Home() {
         <div style={{ marginLeft: -16, marginRight: -16, marginTop: 14 }}>
           <div
             ref={boxRef}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
             style={{
               position: "relative",
               height: "60vh",
@@ -265,7 +253,7 @@ export default function Home() {
               touchAction: "none",
             }}
           >
-            {/* Under: FIRST (Start) */}
+            {/* Under: Start */}
             {firstUrl && (
               <img
                 src={firstUrl}
@@ -282,7 +270,7 @@ export default function Home() {
               />
             )}
 
-            {/* Over: LATEST (Heute) clipped */}
+            {/* Over: Heute (Reveal per Clip) */}
             {latestUrl && (
               <div
                 style={{
@@ -342,7 +330,7 @@ export default function Home() {
               Heute
             </div>
 
-            {/* Handle */}
+            {/* Divider Line */}
             <div
               style={{
                 position: "absolute",
@@ -352,18 +340,23 @@ export default function Home() {
                 transform: "translateX(-1px)",
                 width: 2,
                 background: "rgba(255,255,255,0.9)",
-                boxShadow: "0 0 0 1px rgba(0,0,0,0.35)",
                 zIndex: 6,
               }}
             />
+
+            {/* Handle (nur dieses Element ist draggable) */}
             <div
+              onPointerDown={onHandleDown}
+              onPointerMove={onHandleMove}
+              onPointerUp={onHandleUp}
+              onPointerCancel={onHandleUp}
               style={{
                 position: "absolute",
                 left: `${pos}%`,
                 top: "50%",
                 transform: "translate(-50%, -50%)",
-                width: 44,
-                height: 44,
+                width: 54,
+                height: 54,
                 borderRadius: 999,
                 background: "rgba(0,0,0,0.55)",
                 border: "1px solid rgba(255,255,255,0.25)",
@@ -373,12 +366,14 @@ export default function Home() {
                 color: "white",
                 fontSize: 18,
                 zIndex: 7,
+                cursor: dragging.current ? "grabbing" : "grab",
+                touchAction: "none",
               }}
+              aria-label="Slider ziehen"
             >
               ⇆
             </div>
 
-            {/* Hint */}
             <div
               style={{
                 position: "absolute",
@@ -394,13 +389,12 @@ export default function Home() {
                 zIndex: 5,
               }}
             >
-              Zieh zum Vergleichen
+              Handle ziehen
             </div>
           </div>
         </div>
       )}
 
-      {/* Weiter Button bleibt wie vorher */}
       <div style={{ marginTop: 22, display: "flex", justifyContent: "center" }}>
         <a
           href="/next"
