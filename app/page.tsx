@@ -480,7 +480,6 @@ export default function Home() {
               >
                 Zieh nach links/rechts
               </div>
-              
             </div>
           </div>
         </div>
