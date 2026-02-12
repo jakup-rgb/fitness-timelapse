@@ -1,22 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getAllPhotos, type PhotoEntry } from "./lib/db";
 import { Container, Topbar, ButtonLink, Card } from "./ui";
 
-function dayKey(date: Date) {
-  return date.toISOString().slice(0, 10);
+function dayKeyLocal(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function dayKeyDaysAgo(n: number) {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() - n);
-  return dayKey(d);
+  return dayKeyLocal(d);
 }
 
 function computeStats(all: PhotoEntry[]) {
-  const uniqueDays = new Set(all.map((p) => dayKey(new Date(p.date))));
+  const uniqueDays = new Set(all.map((p) => dayKeyLocal(new Date(p.date))));
   const totalDays = uniqueDays.size;
 
   let streak = 0;
@@ -48,6 +51,11 @@ export default function Home() {
     [photos]
   );
 
+  // Compare Slider State
+  const [pos, setPos] = useState(50); // 0..100
+  const dragging = useRef(false);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+
   async function refresh() {
     const all = await getAllPhotos(); // neueste -> älteste
     setPhotos(all);
@@ -69,8 +77,8 @@ export default function Home() {
 
   // check: heute foto?
   useEffect(() => {
-    const today = dayKey(new Date());
-    const todayHas = photos.some((p) => dayKey(new Date(p.date)) === today);
+    const today = dayKeyLocal(new Date());
+    const todayHas = photos.some((p) => dayKeyLocal(new Date(p.date)) === today);
     setHasTodayPhoto(todayHas);
   }, [photos]);
 
@@ -80,14 +88,12 @@ export default function Home() {
       if (document.visibilityState === "visible") refresh();
     }
     document.addEventListener("visibilitychange", onVisibilityChange);
-    return () =>
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // URLs erzeugen + sauber revoken
   useEffect(() => {
-    // cleanup alt
     if (firstUrl) URL.revokeObjectURL(firstUrl);
     if (latestUrl) URL.revokeObjectURL(latestUrl);
 
@@ -104,6 +110,42 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstPhoto, latestPhoto]);
 
+  // Menu schließen beim Klick außerhalb
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      const t = e.target as HTMLElement;
+      if (!t.closest("[data-menu-root]")) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  function clamp(n: number, min: number, max: number) {
+    return Math.max(min, Math.min(max, n));
+  }
+
+  function updatePos(clientX: number) {
+    const box = boxRef.current;
+    if (!box) return;
+    const r = box.getBoundingClientRect();
+    const p = ((clientX - r.left) / r.width) * 100;
+    setPos(clamp(p, 0, 100));
+  }
+
+  function onPointerDown(e: React.PointerEvent) {
+    dragging.current = true;
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    updatePos(e.clientX);
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    if (!dragging.current) return;
+    updatePos(e.clientX);
+  }
+  function onPointerUp(e: React.PointerEvent) {
+    dragging.current = false;
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+  }
+
   return (
     <Container>
       <Topbar
@@ -117,7 +159,7 @@ export default function Home() {
           </a>
         }
         right={
-          <div style={{ position: "relative" }}>
+          <div style={{ position: "relative" }} data-menu-root>
             <button
               onClick={() => setMenuOpen((v) => !v)}
               style={{
@@ -127,6 +169,7 @@ export default function Home() {
                 background: "transparent",
                 cursor: "pointer",
                 fontSize: 18,
+                color: "white",
               }}
               aria-label="Menü"
             >
@@ -193,211 +236,188 @@ export default function Home() {
           <div style={{ opacity: 0.8 }}>
             Heute fehlt noch dein Foto 🙂 (eingestellt: {reminderTime})
           </div>
-          <div
-            style={{
-              marginTop: 10,
-              display: "flex",
-              gap: 8,
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
             <ButtonLink href="/camera">Jetzt Foto machen</ButtonLink>
             <ButtonLink href="/settings">Uhrzeit ändern</ButtonLink>
           </div>
         </Card>
       )}
 
-      {/* Fullscreen Swipe Bereich */}
+      {/* BEFORE/AFTER SLIDER (edge-to-edge) */}
       {photos.length === 0 ? (
         <Card>
           <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
         </Card>
       ) : (
-        <>
+        <div style={{ marginLeft: -16, marginRight: -16, marginTop: 14 }}>
           <div
+            ref={boxRef}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
             style={{
-              marginLeft: -16,
-              marginRight: -16,
-              marginTop: 14,
+              position: "relative",
+              height: "60vh",
+              minHeight: 440,
+              background: "#000",
+              overflow: "hidden",
+              touchAction: "none",
             }}
           >
+            {/* Under: FIRST (Start) */}
+            {firstUrl && (
+              <img
+                src={firstUrl}
+                alt="start"
+                draggable={false}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  userSelect: "none",
+                }}
+              />
+            )}
+
+            {/* Over: LATEST (Heute) clipped */}
+            {latestUrl && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: `${pos}%`,
+                  overflow: "hidden",
+                }}
+              >
+                <img
+                  src={latestUrl}
+                  alt="heute"
+                  draggable={false}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    userSelect: "none",
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Labels */}
             <div
               style={{
-                display: "flex",
-                gap: 14,
-
-                overflowX: "auto",
-                WebkitOverflowScrolling: "touch",
-                scrollSnapType: "x mandatory",
-
-                paddingLeft: 18,
-                paddingRight: 18,
-                paddingBottom: 6,
-
-                scrollbarWidth: "none",
+                position: "absolute",
+                top: 12,
+                left: 12,
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: "rgba(0,0,0,0.45)",
+                color: "white",
+                fontSize: 12,
+                fontWeight: 700,
+                zIndex: 5,
               }}
             >
-              {/* @ts-ignore */}
-              <style>{`
-                .snapRow::-webkit-scrollbar { display: none; }
-              `}</style>
+              Start
+            </div>
+            <div
+              style={{
+                position: "absolute",
+                top: 12,
+                right: 12,
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: "rgba(0,0,0,0.45)",
+                color: "white",
+                fontSize: 12,
+                fontWeight: 700,
+                zIndex: 5,
+              }}
+            >
+              Heute
+            </div>
 
-              {/* Start Slide */}
-              <div
-                style={{
-                  flex: "0 0 86%",
-                  maxWidth: 520,
-                  scrollSnapAlign: "center",
-                  borderRadius: 18,
-                  overflow: "hidden",
-                  background: "#000",
-                  position: "relative",
-                  height: "56vh",
-                  minHeight: 420,
-                }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 10,
-                    left: 12,
-                    right: 12,
-                    zIndex: 2,
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    fontSize: 12,
-                    opacity: 0.9,
-                    color: "white",
-                    textShadow: "0 1px 10px rgba(0,0,0,0.6)",
-                  }}
-                >
-                  <div>
-                    Start{" "}
-                    {firstPhoto
-                      ? `• ${new Date(firstPhoto.date).toLocaleDateString()}`
-                      : ""}
-                  </div>
-                </div>
+            {/* Handle */}
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                left: `${pos}%`,
+                transform: "translateX(-1px)",
+                width: 2,
+                background: "rgba(255,255,255,0.9)",
+                boxShadow: "0 0 0 1px rgba(0,0,0,0.35)",
+                zIndex: 6,
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                left: `${pos}%`,
+                top: "50%",
+                transform: "translate(-50%, -50%)",
+                width: 44,
+                height: 44,
+                borderRadius: 999,
+                background: "rgba(0,0,0,0.55)",
+                border: "1px solid rgba(255,255,255,0.25)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "white",
+                fontSize: 18,
+                zIndex: 7,
+              }}
+            >
+              ⇆
+            </div>
 
-                {firstUrl && (
-                  <img
-                    src={firstUrl}
-                    alt="first"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      display: "block",
-                    }}
-                  />
-                )}
-
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: 90,
-                    background:
-                      "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
-                  }}
-                />
-              </div>
-
-              {/* Heute Slide */}
-              <div
-                style={{
-                  flex: "0 0 86%",
-                  maxWidth: 520,
-                  scrollSnapAlign: "center",
-                  borderRadius: 18,
-                  overflow: "hidden",
-                  background: "#000",
-                  position: "relative",
-                  height: "56vh",
-                  minHeight: 420,
-                }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 10,
-                    left: 12,
-                    right: 12,
-                    zIndex: 2,
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    fontSize: 12,
-                    opacity: 0.9,
-                    color: "white",
-                    textShadow: "0 1px 10px rgba(0,0,0,0.6)",
-                  }}
-                >
-                  <div>
-                    Heute{" "}
-                    {latestPhoto
-                      ? `• ${new Date(latestPhoto.date).toLocaleDateString()}`
-                      : ""}
-                  </div>
-                </div>
-
-                {latestUrl && (
-                  <img
-                    src={latestUrl}
-                    alt="latest"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      display: "block",
-                    }}
-                  />
-                )}
-
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: 90,
-                    background:
-                      "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
-                  }}
-                />
-              </div>
+            {/* Hint */}
+            <div
+              style={{
+                position: "absolute",
+                bottom: 12,
+                left: "50%",
+                transform: "translateX(-50%)",
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: "rgba(0,0,0,0.45)",
+                color: "white",
+                fontSize: 12,
+                opacity: 0.85,
+                zIndex: 5,
+              }}
+            >
+              Zieh zum Vergleichen
             </div>
           </div>
-
-          {/* ✅ BUTTON UNTER DEN BILDERN (JETZT /next) */}
-          <div
-            style={{
-              marginTop: 22,
-              display: "flex",
-              justifyContent: "center",
-            }}
-          >
-            <a
-              href="/next"
-              style={{
-                padding: "16px 32px",
-                borderRadius: 999,
-                background: "white",
-                color: "black",
-                fontWeight: 800,
-                fontSize: 16,
-                textDecoration: "none",
-                boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-              }}
-            >
-              Weiter →
-            </a>
-          </div>
-        </>
+        </div>
       )}
+
+      {/* Weiter Button bleibt wie vorher */}
+      <div style={{ marginTop: 22, display: "flex", justifyContent: "center" }}>
+        <a
+          href="/next"
+          style={{
+            padding: "16px 32px",
+            borderRadius: 999,
+            background: "white",
+            color: "black",
+            fontWeight: 800,
+            fontSize: 16,
+            textDecoration: "none",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+          }}
+        >
+          Weiter →
+        </a>
+      </div>
     </Container>
   );
 }
