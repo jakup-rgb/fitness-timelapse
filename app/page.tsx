@@ -4,32 +4,25 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getAllPhotos, type PhotoEntry } from "./lib/db";
 import { Container, Topbar, ButtonLink, Card } from "./ui";
 
-function dayKeyLocal(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+function dayKey(date: Date) {
+  return date.toISOString().slice(0, 10);
 }
 
 function dayKeyDaysAgo(n: number) {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() - n);
-  return dayKeyLocal(d);
+  return dayKey(d);
 }
 
 function computeStats(all: PhotoEntry[]) {
-  const uniqueDays = new Set(all.map((p) => dayKeyLocal(new Date(p.date))));
+  const uniqueDays = new Set(all.map((p) => dayKey(new Date(p.date))));
   const totalDays = uniqueDays.size;
 
   let streak = 0;
   while (uniqueDays.has(dayKeyDaysAgo(streak))) streak++;
 
   return { totalDays, streak };
-}
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
 }
 
 export default function Home() {
@@ -55,6 +48,11 @@ export default function Home() {
     [photos]
   );
 
+  // Compare Slider
+  const sliderRef = useRef<HTMLDivElement | null>(null);
+  const draggingRef = useRef(false);
+  const [split, setSplit] = useState(0.5); // 0..1 (Start Mitte)
+
   async function refresh() {
     const all = await getAllPhotos(); // neueste -> älteste
     setPhotos(all);
@@ -76,8 +74,8 @@ export default function Home() {
 
   // check: heute foto?
   useEffect(() => {
-    const today = dayKeyLocal(new Date());
-    const todayHas = photos.some((p) => dayKeyLocal(new Date(p.date)) === today);
+    const today = dayKey(new Date());
+    const todayHas = photos.some((p) => dayKey(new Date(p.date)) === today);
     setHasTodayPhoto(todayHas);
   }, [photos]);
 
@@ -87,7 +85,8 @@ export default function Home() {
       if (document.visibilityState === "visible") refresh();
     }
     document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -109,54 +108,30 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstPhoto, latestPhoto]);
 
-  // Menu schließen beim Klick außerhalb
-  useEffect(() => {
-    function onDown(e: MouseEvent) {
-      const t = e.target as HTMLElement;
-      if (!t.closest("[data-menu-root]")) setMenuOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, []);
-
-  // ---------------- Center Reveal Slider ----------------
-  // delta: -50..+50 (0 = Mitte). Größe des Reveal = |delta|.
-  const [delta, setDelta] = useState(0);
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  const dragging = useRef(false);
-
-  function updateDelta(clientX: number) {
-    const box = boxRef.current;
-    if (!box) return;
-    const r = box.getBoundingClientRect();
-    const x = clientX - r.left; // 0..width
-    const d = (x / r.width - 0.5) * 100; // -50..+50
-    setDelta(clamp(d, -50, 50));
+  function setSplitFromClientX(clientX: number) {
+    const el = sliderRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const p = x / rect.width;
+    const clamped = Math.max(0, Math.min(1, p));
+    setSplit(clamped);
   }
 
-  function onHandleDown(e: React.PointerEvent) {
-    dragging.current = true;
+  function onPointerDown(e: React.PointerEvent) {
+    draggingRef.current = true;
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    updateDelta(e.clientX);
-  }
-  function onHandleMove(e: React.PointerEvent) {
-    if (!dragging.current) return;
-    updateDelta(e.clientX);
-  }
-  function onHandleUp(e: React.PointerEvent) {
-    dragging.current = false;
-    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    setSplitFromClientX(e.clientX);
   }
 
-  // sichtbarer Bereich um die Mitte (in %)
-  const center = 50;
-  const half = Math.abs(delta); // 0..50
-  const leftEdge = center - half; // 0..50
-  const rightEdge = center + half; // 50..100
+  function onPointerMove(e: React.PointerEvent) {
+    if (!draggingRef.current) return;
+    setSplitFromClientX(e.clientX);
+  }
 
-  // Wenn delta < 0, dann wollen wir eher "Start" sichtbar machen,
-  // wenn delta > 0 eher "Heute". Damit fühlt es sich wie "links/rechts" an.
-  const showLatest = delta >= 0;
+  function onPointerUp() {
+    draggingRef.current = false;
+  }
 
   return (
     <Container>
@@ -171,7 +146,7 @@ export default function Home() {
           </a>
         }
         right={
-          <div style={{ position: "relative" }} data-menu-root>
+          <div style={{ position: "relative" }}>
             <button
               onClick={() => setMenuOpen((v) => !v)}
               style={{
@@ -181,7 +156,6 @@ export default function Home() {
                 background: "transparent",
                 cursor: "pointer",
                 fontSize: 18,
-                color: "white",
               }}
               aria-label="Menü"
             >
@@ -228,7 +202,9 @@ export default function Home() {
                 gap: 10,
               }}
             >
-              <div style={{ fontSize: 56, fontWeight: 800, lineHeight: 1 }}>{streak}</div>
+              <div style={{ fontSize: 56, fontWeight: 800, lineHeight: 1 }}>
+                {streak}
+              </div>
               <div style={{ fontSize: 18, opacity: 0.85 }}>Tage Streak</div>
             </div>
           )}
@@ -253,239 +229,179 @@ export default function Home() {
         </Card>
       )}
 
-      {/* Center Reveal Compare (edge-to-edge) */}
+      {/* Compare Slider (Start vs Heute) */}
       {photos.length === 0 ? (
         <Card>
           <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
         </Card>
       ) : (
-        <div style={{ marginLeft: -16, marginRight: -16, marginTop: 14 }}>
+        <div
+          style={{
+            // edge-to-edge
+            marginLeft: -16,
+            marginRight: -16,
+            marginTop: 14,
+          }}
+        >
           <div
-            ref={boxRef}
+            ref={sliderRef}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
             style={{
               position: "relative",
-              height: "60vh",
+              width: "100%",
+              height: "62vh",
               minHeight: 440,
               background: "#000",
               overflow: "hidden",
-              touchAction: "none",
+              touchAction: "none", // wichtig: damit Drag sauber geht (iOS)
             }}
           >
-            {/* Base Layer: zeige immer das jeweils andere Bild full */}
-            {showLatest ? (
-              firstUrl && (
-                <img
-                  src={firstUrl}
-                  alt="start"
-                  draggable={false}
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    userSelect: "none",
-                  }}
-                />
-              )
-            ) : (
-              latestUrl && (
-                <img
-                  src={latestUrl}
-                  alt="heute"
-                  draggable={false}
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    userSelect: "none",
-                  }}
-                />
-              )
+            {/* Base: Start (hinten) */}
+            {firstUrl && (
+              <img
+                src={firstUrl}
+                alt="Start"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                }}
+              />
             )}
 
-            {/* Overlay Layer: Center reveal */}
-            {showLatest ? (
-              latestUrl && (
-                <div
+            {/* Overlay: Heute (vorn) – wird per Breite “revealed” */}
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: `${split * 100}%`,
+                overflow: "hidden",
+              }}
+            >
+              {latestUrl && (
+                <img
+                  src={latestUrl}
+                  alt="Heute"
                   style={{
                     position: "absolute",
                     inset: 0,
-                    clipPath: `inset(0 ${100 - rightEdge}% 0 ${leftEdge}%)`,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: "block",
                   }}
-                >
-                  <img
-                    src={latestUrl}
-                    alt="heute"
-                    draggable={false}
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      userSelect: "none",
-                    }}
-                  />
-                </div>
-              )
-            ) : (
-              firstUrl && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    clipPath: `inset(0 ${100 - rightEdge}% 0 ${leftEdge}%)`,
-                  }}
-                >
-                  <img
-                    src={firstUrl}
-                    alt="start"
-                    draggable={false}
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      userSelect: "none",
-                    }}
-                  />
-                </div>
-              )
-            )}
+                />
+              )}
+            </div>
 
             {/* Labels */}
             <div
               style={{
                 position: "absolute",
-                top: 12,
+                top: 10,
                 left: 12,
-                padding: "6px 10px",
-                borderRadius: 999,
-                background: "rgba(0,0,0,0.45)",
-                color: "white",
-                fontSize: 12,
-                fontWeight: 700,
-                zIndex: 5,
-              }}
-            >
-              Start
-            </div>
-            <div
-              style={{
-                position: "absolute",
-                top: 12,
                 right: 12,
-                padding: "6px 10px",
-                borderRadius: 999,
-                background: "rgba(0,0,0,0.45)",
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                zIndex: 5,
                 color: "white",
                 fontSize: 12,
-                fontWeight: 700,
-                zIndex: 5,
+                opacity: 0.95,
+                textShadow: "0 1px 10px rgba(0,0,0,0.6)",
+                pointerEvents: "none",
               }}
             >
-              Heute
+              <div>
+                Start{" "}
+                {firstPhoto ? `• ${new Date(firstPhoto.date).toLocaleDateString()}` : ""}
+              </div>
+              <div>
+                Heute{" "}
+                {latestPhoto
+                  ? `• ${new Date(latestPhoto.date).toLocaleDateString()}`
+                  : ""}
+              </div>
             </div>
 
-            {/* Reveal Edges */}
+            {/* Divider Line */}
             <div
               style={{
                 position: "absolute",
                 top: 0,
                 bottom: 0,
-                left: `${leftEdge}%`,
-                transform: "translateX(-1px)",
+                left: `${split * 100}%`,
                 width: 2,
-                background: "rgba(255,255,255,0.9)",
-                zIndex: 6,
-              }}
-            />
-            <div
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                left: `${rightEdge}%`,
                 transform: "translateX(-1px)",
-                width: 2,
-                background: "rgba(255,255,255,0.9)",
+                background: "rgba(255,255,255,0.95)",
                 zIndex: 6,
+                boxShadow: "0 0 18px rgba(0,0,0,0.35)",
+                pointerEvents: "none",
               }}
             />
 
-            {/* Handle bleibt in der Mitte – ziehen links/rechts */}
+            {/* Handle */}
             <div
-              onPointerDown={onHandleDown}
-              onPointerMove={onHandleMove}
-              onPointerUp={onHandleUp}
-              onPointerCancel={onHandleUp}
               style={{
                 position: "absolute",
-                left: "50%",
                 top: "50%",
+                left: `${split * 100}%`,
                 transform: "translate(-50%, -50%)",
                 width: 54,
                 height: 54,
                 borderRadius: 999,
-                background: "rgba(0,0,0,0.55)",
-                border: "1px solid rgba(255,255,255,0.25)",
+                background: "rgba(255,255,255,0.20)",
+                border: "1px solid rgba(255,255,255,0.6)",
+                backdropFilter: "blur(6px)",
+                WebkitBackdropFilter: "blur(6px)",
+                zIndex: 7,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "white",
-                fontSize: 18,
-                zIndex: 7,
-                cursor: dragging.current ? "grabbing" : "grab",
-                touchAction: "none",
+                pointerEvents: "none",
               }}
-              aria-label="Slider ziehen"
             >
-              ⇆
+              <div
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 999,
+                  background: "rgba(0,0,0,0.35)",
+                  border: "1px solid rgba(255,255,255,0.35)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "white",
+                  fontSize: 18,
+                  lineHeight: 1,
+                }}
+              >
+                ⇆
+              </div>
             </div>
 
+            {/* Top fade für Lesbarkeit */}
             <div
               style={{
                 position: "absolute",
-                bottom: 12,
-                left: "50%",
-                transform: "translateX(-50%)",
-                padding: "6px 10px",
-                borderRadius: 999,
-                background: "rgba(0,0,0,0.45)",
-                color: "white",
-                fontSize: 12,
-                opacity: 0.85,
-                zIndex: 5,
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 110,
+                background: "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
+                zIndex: 4,
+                pointerEvents: "none",
               }}
-            >
-              Von der Mitte ziehen
-            </div>
+            />
           </div>
         </div>
       )}
-
-      {/* Weiter Button */}
-      <div style={{ marginTop: 22, display: "flex", justifyContent: "center" }}>
-        <a
-          href="/next"
-          style={{
-            padding: "16px 32px",
-            borderRadius: 999,
-            background: "white",
-            color: "black",
-            fontWeight: 800,
-            fontSize: 16,
-            textDecoration: "none",
-            boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-          }}
-        >
-          Weiter →
-        </a>
-      </div>
     </Container>
   );
 }
