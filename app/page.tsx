@@ -25,6 +25,10 @@ function computeStats(all: PhotoEntry[]) {
   return { totalDays, streak };
 }
 
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
 export default function Home() {
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [reminderTime, setReminderTime] = useState<string | null>(null);
@@ -48,10 +52,10 @@ export default function Home() {
     [photos]
   );
 
-  // Compare Slider
-  const sliderRef = useRef<HTMLDivElement | null>(null);
-  const draggingRef = useRef(false);
-  const [split, setSplit] = useState(0.5); // 0..1 (Start Mitte)
+  // Center-reveal split (0..100). Start: 50% (beide Hälften sichtbar)
+  const [split, setSplit] = useState(50);
+  const [dragging, setDragging] = useState(false);
+  const compareRef = useRef<HTMLDivElement | null>(null);
 
   async function refresh() {
     const all = await getAllPhotos(); // neueste -> älteste
@@ -96,7 +100,9 @@ export default function Home() {
     if (latestUrl) URL.revokeObjectURL(latestUrl);
 
     const nextFirst = firstPhoto ? URL.createObjectURL(firstPhoto.blob) : null;
-    const nextLatest = latestPhoto ? URL.createObjectURL(latestPhoto.blob) : null;
+    const nextLatest = latestPhoto
+      ? URL.createObjectURL(latestPhoto.blob)
+      : null;
 
     setFirstUrl(nextFirst);
     setLatestUrl(nextLatest);
@@ -108,29 +114,66 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstPhoto, latestPhoto]);
 
+  // Menü schließt bei Klick außerhalb
+  useEffect(() => {
+    function onDocDown(e: MouseEvent) {
+      if (!menuOpen) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      // wenn Klick irgendwo außerhalb vom Menü-Block (Button+Dropdown)
+      const menuRoot = document.getElementById("home-menu-root");
+      if (menuRoot && !menuRoot.contains(target)) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+  }, [menuOpen]);
+
   function setSplitFromClientX(clientX: number) {
-    const el = sliderRef.current;
+    const el = compareRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const x = clientX - rect.left;
-    const p = x / rect.width;
-    const clamped = Math.max(0, Math.min(1, p));
-    setSplit(clamped);
+    const pct = (x / rect.width) * 100;
+    setSplit(clamp(pct, 0, 100));
   }
 
+  // Pointer Events (Mouse + Touch modern)
   function onPointerDown(e: React.PointerEvent) {
-    draggingRef.current = true;
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    if (!compareRef.current) return;
+    setDragging(true);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
     setSplitFromClientX(e.clientX);
   }
 
   function onPointerMove(e: React.PointerEvent) {
-    if (!draggingRef.current) return;
+    if (!dragging) return;
     setSplitFromClientX(e.clientX);
   }
 
-  function onPointerUp() {
-    draggingRef.current = false;
+  function onPointerUp(e: React.PointerEvent) {
+    setDragging(false);
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {}
+  }
+
+  // Fallback Touch (für sehr alte Fälle)
+  function onTouchStart(e: React.TouchEvent) {
+    const t = e.touches[0];
+    if (!t) return;
+    setDragging(true);
+    setSplitFromClientX(t.clientX);
+  }
+  function onTouchMove(e: React.TouchEvent) {
+    if (!dragging) return;
+    const t = e.touches[0];
+    if (!t) return;
+    setSplitFromClientX(t.clientX);
+  }
+  function onTouchEnd() {
+    setDragging(false);
   }
 
   return (
@@ -146,7 +189,7 @@ export default function Home() {
           </a>
         }
         right={
-          <div style={{ position: "relative" }}>
+          <div id="home-menu-root" style={{ position: "relative" }}>
             <button
               onClick={() => setMenuOpen((v) => !v)}
               style={{
@@ -222,48 +265,62 @@ export default function Home() {
           <div style={{ opacity: 0.8 }}>
             Heute fehlt noch dein Foto 🙂 (eingestellt: {reminderTime})
           </div>
-          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div
+            style={{
+              marginTop: 10,
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
             <ButtonLink href="/camera">Jetzt Foto machen</ButtonLink>
             <ButtonLink href="/settings">Uhrzeit ändern</ButtonLink>
           </div>
         </Card>
       )}
 
-      {/* Compare Slider (Start vs Heute) */}
+      {/* Center-Reveal Compare (edge-to-edge) */}
       {photos.length === 0 ? (
         <Card>
-          <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
+          <p style={{ margin: 0, opacity: 0.8 }}>
+            Noch kein Foto. Mach dein erstes 🙂
+          </p>
         </Card>
       ) : (
         <div
           style={{
-            // edge-to-edge
             marginLeft: -16,
             marginRight: -16,
             marginTop: 14,
           }}
         >
           <div
-            ref={sliderRef}
+            ref={compareRef}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
             style={{
               position: "relative",
               width: "100%",
-              height: "62vh",
-              minHeight: 440,
+              height: "56vh",
+              minHeight: 420,
               background: "#000",
               overflow: "hidden",
-              touchAction: "none", // wichtig: damit Drag sauber geht (iOS)
+              touchAction: "none", // wichtig: sonst scrollt iOS/Android statt zu draggen
+              userSelect: "none",
             }}
+            aria-label="Vorher/Nachher Vergleich"
           >
-            {/* Base: Start (hinten) */}
+            {/* Unten: Start (links) */}
             {firstUrl && (
               <img
                 src={firstUrl}
                 alt="Start"
+                draggable={false}
                 style={{
                   position: "absolute",
                   inset: 0,
@@ -275,118 +332,72 @@ export default function Home() {
               />
             )}
 
-            {/* Overlay: Heute (vorn) – wird per Breite “revealed” */}
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: `${split * 100}%`,
-                overflow: "hidden",
-              }}
-            >
-              {latestUrl && (
-                <img
-                  src={latestUrl}
-                  alt="Heute"
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    display: "block",
-                  }}
-                />
-              )}
-            </div>
+            {/* Oben: Heute (rechts) – wird per Clip sichtbar */}
+            {latestUrl && (
+              <img
+                src={latestUrl}
+                alt="Heute"
+                draggable={false}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                  // Zeigt links..split% vom "Heute"-Bild
+                  clipPath: `inset(0 ${100 - split}% 0 0)`,
+                }}
+              />
+            )}
 
-            {/* Labels */}
+            {/* Top labels */}
             <div
               style={{
                 position: "absolute",
                 top: 10,
                 left: 12,
                 right: 12,
+                zIndex: 3,
                 display: "flex",
                 justifyContent: "space-between",
                 gap: 10,
-                zIndex: 5,
-                color: "white",
                 fontSize: 12,
+                color: "white",
                 opacity: 0.95,
-                textShadow: "0 1px 10px rgba(0,0,0,0.6)",
-                pointerEvents: "none",
-              }}
-            >
-              <div>
-                Start{" "}
-                {firstPhoto ? `• ${new Date(firstPhoto.date).toLocaleDateString()}` : ""}
-              </div>
-              <div>
-                Heute{" "}
-                {latestPhoto
-                  ? `• ${new Date(latestPhoto.date).toLocaleDateString()}`
-                  : ""}
-              </div>
-            </div>
-
-            {/* Divider Line */}
-            <div
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                left: `${split * 100}%`,
-                width: 2,
-                transform: "translateX(-1px)",
-                background: "rgba(255,255,255,0.95)",
-                zIndex: 6,
-                boxShadow: "0 0 18px rgba(0,0,0,0.35)",
-                pointerEvents: "none",
-              }}
-            />
-
-            {/* Handle */}
-            <div
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: `${split * 100}%`,
-                transform: "translate(-50%, -50%)",
-                width: 54,
-                height: 54,
-                borderRadius: 999,
-                background: "rgba(255,255,255,0.20)",
-                border: "1px solid rgba(255,255,255,0.6)",
-                backdropFilter: "blur(6px)",
-                WebkitBackdropFilter: "blur(6px)",
-                zIndex: 7,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                pointerEvents: "none",
+                textShadow: "0 1px 12px rgba(0,0,0,0.75)",
               }}
             >
               <div
                 style={{
-                  width: 38,
-                  height: 38,
+                  padding: "6px 10px",
                   borderRadius: 999,
                   background: "rgba(0,0,0,0.35)",
-                  border: "1px solid rgba(255,255,255,0.35)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "white",
-                  fontSize: 18,
-                  lineHeight: 1,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  backdropFilter: "blur(6px)",
+                  WebkitBackdropFilter: "blur(6px)",
                 }}
               >
-                ⇆
+                Start{" "}
+                {firstPhoto ? `• ${new Date(firstPhoto.date).toLocaleDateString()}` : ""}
+              </div>
+
+              <div
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  background: "rgba(0,0,0,0.35)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  backdropFilter: "blur(6px)",
+                  WebkitBackdropFilter: "blur(6px)",
+                }}
+              >
+                Heute{" "}
+                {latestPhoto ? `• ${new Date(latestPhoto.date).toLocaleDateString()}` : ""}
               </div>
             </div>
 
-            {/* Top fade für Lesbarkeit */}
+            {/* Dunkler Verlauf oben für Lesbarkeit */}
             <div
               style={{
                 position: "absolute",
@@ -394,11 +405,82 @@ export default function Home() {
                 left: 0,
                 right: 0,
                 height: 110,
-                background: "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
-                zIndex: 4,
-                pointerEvents: "none",
+                zIndex: 2,
+                background:
+                  "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
               }}
             />
+
+            {/* Split-Line + Handle */}
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                left: `${split}%`,
+                width: 2,
+                transform: "translateX(-1px)",
+                background: "rgba(255,255,255,0.9)",
+                zIndex: 4,
+                boxShadow: "0 0 18px rgba(0,0,0,0.55)",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                top: "50%",
+                left: `${split}%`,
+                transform: "translate(-50%, -50%)",
+                zIndex: 5,
+                width: 44,
+                height: 44,
+                borderRadius: 999,
+                background: "rgba(0,0,0,0.35)",
+                border: "1px solid rgba(255,255,255,0.22)",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "white",
+                fontSize: 18,
+                boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+              }}
+              aria-hidden="true"
+            >
+              ↔
+            </div>
+
+            {/* kleines Hint unten (optional) */}
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: 10,
+                display: "flex",
+                justifyContent: "center",
+                zIndex: 6,
+                pointerEvents: "none",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12,
+                  opacity: 0.85,
+                  color: "white",
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  background: "rgba(0,0,0,0.28)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  backdropFilter: "blur(6px)",
+                  WebkitBackdropFilter: "blur(6px)",
+                  textShadow: "0 1px 10px rgba(0,0,0,0.6)",
+                }}
+              >
+                Zieh nach links/rechts
+              </div>
+            </div>
           </div>
         </div>
       )}
