@@ -353,7 +353,7 @@ export default function Home() {
               style={{
                 position: "absolute",
                 left: `${pos}%`,
-                top: "50%",
+                top: "38%",
                 transform: "translate(-50%, -50%)",
                 width: 54,
                 height: 54,
