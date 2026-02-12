@@ -42,6 +42,7 @@ export default function Home() {
 
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // URLs für erstes + letztes Foto
   const [firstUrl, setFirstUrl] = useState<string | null>(null);
   const [latestUrl, setLatestUrl] = useState<string | null>(null);
 
@@ -55,7 +56,7 @@ export default function Home() {
   );
 
   async function refresh() {
-    const all = await getAllPhotos();
+    const all = await getAllPhotos(); // neueste -> älteste
     setPhotos(all);
 
     const stats = computeStats(all);
@@ -67,17 +68,20 @@ export default function Home() {
     refresh();
   }, []);
 
+  // LocalStorage Reminder-Time
   useEffect(() => {
     const rt = localStorage.getItem("reminder_time");
     setReminderTime(rt);
   }, []);
 
+  // check: heute foto?
   useEffect(() => {
     const today = dayKeyLocal(new Date());
     const todayHas = photos.some((p) => dayKeyLocal(new Date(p.date)) === today);
     setHasTodayPhoto(todayHas);
   }, [photos]);
 
+  // Auto-refresh wenn Home wieder sichtbar wird
   useEffect(() => {
     function onVisibilityChange() {
       if (document.visibilityState === "visible") refresh();
@@ -87,6 +91,7 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // URLs erzeugen + sauber revoken
   useEffect(() => {
     if (firstUrl) URL.revokeObjectURL(firstUrl);
     if (latestUrl) URL.revokeObjectURL(latestUrl);
@@ -104,6 +109,7 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstPhoto, latestPhoto]);
 
+  // Menu schließen beim Klick außerhalb
   useEffect(() => {
     function onDown(e: MouseEvent) {
       const t = e.target as HTMLElement;
@@ -113,33 +119,44 @@ export default function Home() {
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
 
-  // --- Compare Slider state ---
-  const [pos, setPos] = useState(50); // 0..100
+  // ---------------- Center Reveal Slider ----------------
+  // delta: -50..+50 (0 = Mitte). Größe des Reveal = |delta|.
+  const [delta, setDelta] = useState(0);
   const boxRef = useRef<HTMLDivElement | null>(null);
   const dragging = useRef(false);
 
-  function updatePos(clientX: number) {
+  function updateDelta(clientX: number) {
     const box = boxRef.current;
     if (!box) return;
     const r = box.getBoundingClientRect();
-    const p = ((clientX - r.left) / r.width) * 100;
-    setPos(clamp(p, 0, 100));
+    const x = clientX - r.left; // 0..width
+    const d = (x / r.width - 0.5) * 100; // -50..+50
+    setDelta(clamp(d, -50, 50));
   }
 
-  // Drag nur am Handle
   function onHandleDown(e: React.PointerEvent) {
     dragging.current = true;
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    updatePos(e.clientX);
+    updateDelta(e.clientX);
   }
   function onHandleMove(e: React.PointerEvent) {
     if (!dragging.current) return;
-    updatePos(e.clientX);
+    updateDelta(e.clientX);
   }
   function onHandleUp(e: React.PointerEvent) {
     dragging.current = false;
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
   }
+
+  // sichtbarer Bereich um die Mitte (in %)
+  const center = 50;
+  const half = Math.abs(delta); // 0..50
+  const leftEdge = center - half; // 0..50
+  const rightEdge = center + half; // 50..100
+
+  // Wenn delta < 0, dann wollen wir eher "Start" sichtbar machen,
+  // wenn delta > 0 eher "Heute". Damit fühlt es sich wie "links/rechts" an.
+  const showLatest = delta >= 0;
 
   return (
     <Container>
@@ -197,6 +214,7 @@ export default function Home() {
         }
       />
 
+      {/* Streak Card */}
       <Card>
         <div style={{ textAlign: "center" }}>
           {streak === 0 ? (
@@ -210,9 +228,7 @@ export default function Home() {
                 gap: 10,
               }}
             >
-              <div style={{ fontSize: 56, fontWeight: 800, lineHeight: 1 }}>
-                {streak}
-              </div>
+              <div style={{ fontSize: 56, fontWeight: 800, lineHeight: 1 }}>{streak}</div>
               <div style={{ fontSize: 18, opacity: 0.85 }}>Tage Streak</div>
             </div>
           )}
@@ -223,6 +239,7 @@ export default function Home() {
         </div>
       </Card>
 
+      {/* Reminder */}
       {reminderTime && !hasTodayPhoto && (
         <Card>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Reminder</div>
@@ -236,6 +253,7 @@ export default function Home() {
         </Card>
       )}
 
+      {/* Center Reveal Compare (edge-to-edge) */}
       {photos.length === 0 ? (
         <Card>
           <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
@@ -253,106 +271,181 @@ export default function Home() {
               touchAction: "none",
             }}
           >
-            {/* Under: Start */}
-            {firstUrl && (
-              <img
-                src={firstUrl}
-                alt="start"
-                draggable={false}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                  userSelect: "none",
-                }}
-              />
+            {/* Base Layer: zeige immer das jeweils andere Bild full */}
+            {showLatest ? (
+              firstUrl && (
+                <img
+                  src={firstUrl}
+                  alt="start"
+                  draggable={false}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    userSelect: "none",
+                  }}
+                />
+              )
+            ) : (
+              latestUrl && (
+                <img
+                  src={latestUrl}
+                  alt="heute"
+                  draggable={false}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    userSelect: "none",
+                  }}
+                />
+              )
             )}
 
-            {/* Over: Heute (Reveal per Clip) */}
-{/* Over: Heute (Reveal von der Mitte nach außen) */}
-{latestUrl && (
-  <div
-    style={{
-      position: "absolute",
-      inset: 0,
-      // Center reveal: nur Bereich [left..right] sichtbar
-      clipPath: `inset(0 ${100 - right}% 0 ${left}%)`,
-    }}
-  >
-    <img
-      src={latestUrl}
-      alt="heute"
-      draggable={false}
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        objectFit: "cover",
-        userSelect: "none",
-      }}
-    />
-  </div>
-)}
+            {/* Overlay Layer: Center reveal */}
+            {showLatest ? (
+              latestUrl && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    clipPath: `inset(0 ${100 - rightEdge}% 0 ${leftEdge}%)`,
+                  }}
+                >
+                  <img
+                    src={latestUrl}
+                    alt="heute"
+                    draggable={false}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      userSelect: "none",
+                    }}
+                  />
+                </div>
+              )
+            ) : (
+              firstUrl && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    clipPath: `inset(0 ${100 - rightEdge}% 0 ${leftEdge}%)`,
+                  }}
+                >
+                  <img
+                    src={firstUrl}
+                    alt="start"
+                    draggable={false}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      userSelect: "none",
+                    }}
+                  />
+                </div>
+              )
+            )}
 
-{/* Zwei Divider-Linien (links & rechts der Reveal-Kante) */}
-<div
-  style={{
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: `${left}%`,
-    transform: "translateX(-1px)",
-    width: 2,
-    background: "rgba(255,255,255,0.9)",
-    zIndex: 6,
-  }}
-/>
-<div
-  style={{
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: `${right}%`,
-    transform: "translateX(-1px)",
-    width: 2,
-    background: "rgba(255,255,255,0.9)",
-    zIndex: 6,
-  }}
-/>
+            {/* Labels */}
+            <div
+              style={{
+                position: "absolute",
+                top: 12,
+                left: 12,
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: "rgba(0,0,0,0.45)",
+                color: "white",
+                fontSize: 12,
+                fontWeight: 700,
+                zIndex: 5,
+              }}
+            >
+              Start
+            </div>
+            <div
+              style={{
+                position: "absolute",
+                top: 12,
+                right: 12,
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: "rgba(0,0,0,0.45)",
+                color: "white",
+                fontSize: 12,
+                fontWeight: 700,
+                zIndex: 5,
+              }}
+            >
+              Heute
+            </div>
 
-{/* Handle sitzt in der Mitte (fix), du ziehst aber links/rechts */}
-<div
-  onPointerDown={onHandleDown}
-  onPointerMove={onHandleMove}
-  onPointerUp={onHandleUp}
-  onPointerCancel={onHandleUp}
-  style={{
-    position: "absolute",
-    left: "50%",
-    top: "50%",
-    transform: "translate(-50%, -50%)",
-    width: 54,
-    height: 54,
-    borderRadius: 999,
-    background: "rgba(0,0,0,0.55)",
-    border: "1px solid rgba(255,255,255,0.25)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "white",
-    fontSize: 18,
-    zIndex: 7,
-    cursor: "grab",
-    touchAction: "none",
-  }}
-  aria-label="Slider ziehen"
->
-  ⇆
-</div>
+            {/* Reveal Edges */}
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                left: `${leftEdge}%`,
+                transform: "translateX(-1px)",
+                width: 2,
+                background: "rgba(255,255,255,0.9)",
+                zIndex: 6,
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                left: `${rightEdge}%`,
+                transform: "translateX(-1px)",
+                width: 2,
+                background: "rgba(255,255,255,0.9)",
+                zIndex: 6,
+              }}
+            />
 
+            {/* Handle bleibt in der Mitte – ziehen links/rechts */}
+            <div
+              onPointerDown={onHandleDown}
+              onPointerMove={onHandleMove}
+              onPointerUp={onHandleUp}
+              onPointerCancel={onHandleUp}
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: "50%",
+                transform: "translate(-50%, -50%)",
+                width: 54,
+                height: 54,
+                borderRadius: 999,
+                background: "rgba(0,0,0,0.55)",
+                border: "1px solid rgba(255,255,255,0.25)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "white",
+                fontSize: 18,
+                zIndex: 7,
+                cursor: dragging.current ? "grabbing" : "grab",
+                touchAction: "none",
+              }}
+              aria-label="Slider ziehen"
+            >
+              ⇆
+            </div>
 
             <div
               style={{
@@ -369,12 +462,13 @@ export default function Home() {
                 zIndex: 5,
               }}
             >
-              Handle ziehen
+              Von der Mitte ziehen
             </div>
           </div>
         </div>
       )}
 
+      {/* Weiter Button */}
       <div style={{ marginTop: 22, display: "flex", justifyContent: "center" }}>
         <a
           href="/next"
