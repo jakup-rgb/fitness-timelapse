@@ -44,16 +44,18 @@ export default function TimelapsePage() {
   const filteredPhotos = useMemo(() => {
     if (photosChrono.length === 0) return [];
 
-    // Initial defaults setzen (falls leer)
-    // -> passiert auch nach dem Laden
     const safeFrom = fromDay || localDayKey(new Date(photosChrono[0].date));
     const safeTo =
       toDay || localDayKey(new Date(photosChrono[photosChrono.length - 1].date));
 
     if (mode === "date") {
+      // falls user von/bis vertauscht → sauber machen
+      const a = safeFrom <= safeTo ? safeFrom : safeTo;
+      const b = safeFrom <= safeTo ? safeTo : safeFrom;
+
       return photosChrono.filter((p) => {
         const k = localDayKey(new Date(p.date));
-        return k >= safeFrom && k <= safeTo;
+        return k >= a && k <= b;
       });
     }
 
@@ -107,7 +109,7 @@ export default function TimelapsePage() {
   useEffect(() => {
     const next = filteredPhotos.map((p) => URL.createObjectURL(p.blob));
     setUrls(next);
-    setIndex(0); // wenn Bereich ändert: zurück zum Anfang
+    setIndex(0);
     setPlaying(true);
 
     return () => {
@@ -131,7 +133,6 @@ export default function TimelapsePage() {
 
     const timer = setInterval(() => {
       setIndex((i) => {
-        // wenn letztes Bild erreicht → stoppen
         if (i >= urls.length - 1) {
           setPlaying(false);
           return i;
@@ -184,6 +185,18 @@ export default function TimelapsePage() {
     setModalOpen(false);
   }
 
+  const uploadStyleButton: React.CSSProperties = {
+    padding: "16px 36px",
+    borderRadius: 999,
+    background: "white",
+    color: "black",
+    fontWeight: 800,
+    fontSize: 16,
+    border: "none",
+    cursor: "pointer",
+    boxShadow: "0 15px 40px rgba(0,0,0,0.35)",
+  };
+
   return (
     <Container>
       <Topbar title="Timelapse" right={<ButtonLink href="/next">Zurück</ButtonLink>} />
@@ -219,7 +232,7 @@ export default function TimelapsePage() {
                   cursor: "pointer",
                 }}
               >
-                von - bis 
+                von - bis
               </button>
             </div>
 
@@ -335,6 +348,13 @@ export default function TimelapsePage() {
               />
               <div style={{ fontSize: 12, opacity: 0.6 }}>{speed} ms</div>
             </label>
+
+            {/* ✅ Unten: Upload-Style Button */}
+            <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
+              <button onClick={() => setModalOpen(true)} style={uploadStyleButton}>
+                von - bis
+              </button>
+            </div>
           </>
         )}
       </Card>
@@ -343,7 +363,6 @@ export default function TimelapsePage() {
       {modalOpen && (
         <div
           onMouseDown={(e) => {
-            // Klick außerhalb schließt
             if (e.target === e.currentTarget) safeCloseModal();
           }}
           style={{
@@ -594,8 +613,6 @@ export default function TimelapsePage() {
               </button>
               <button
                 onClick={() => {
-                  // „Anwenden“ ist hier eigentlich sofort (State ist live),
-                  // aber fühlt sich UX-mäßig besser an.
                   setIndex(0);
                   setPlaying(true);
                   safeCloseModal();
