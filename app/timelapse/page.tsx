@@ -17,12 +17,13 @@ function formatDateLabel(iso: string) {
 }
 
 type RangeMode = "date" | "photo";
+type QuickPreset = "7" | "10" | "30" | "all" | null;
 
 export default function TimelapsePage() {
   const [photosRaw, setPhotosRaw] = useState<PhotoEntry[]>([]);
   const photosChrono = useMemo(() => {
-    // getAllPhotos liefert bei dir: neueste -> älteste
-    // Für Timelapse wollen wir: älteste -> neueste
+    // getAllPhotos liefert: neueste -> älteste
+    // für Timelapse: älteste -> neueste
     const copy = [...photosRaw];
     copy.sort((a, b) => a.date.localeCompare(b.date));
     return copy;
@@ -39,6 +40,9 @@ export default function TimelapsePage() {
   // Foto-Range (über Index)
   const [startId, setStartId] = useState<string>("");
   const [endId, setEndId] = useState<string>("");
+
+  // Quick Preset (für Highlight)
+  const [quickPreset, setQuickPreset] = useState<QuickPreset>(null);
 
   // Aktiver gefilterter Bereich
   const filteredPhotos = useMemo(() => {
@@ -81,7 +85,7 @@ export default function TimelapsePage() {
   const [urls, setUrls] = useState<string[]>([]);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(true);
-  const [speed, setSpeed] = useState(300); // ms pro Bild
+  const [speed, setSpeed] = useState(300);
 
   // Fotos laden
   useEffect(() => {
@@ -104,6 +108,12 @@ export default function TimelapsePage() {
     setStartId((v) => v || first.id);
     setEndId((v) => v || last.id);
   }, [photosChrono]);
+
+  // Wenn User manuell Datum/Fotos ändert → QuickPreset zurücksetzen
+  useEffect(() => {
+    setQuickPreset(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromDay, toDay, startId, endId, mode]);
 
   // Blob → URLs (für gefilterte Photos)
   useEffect(() => {
@@ -166,6 +176,7 @@ export default function TimelapsePage() {
     setMode("date");
     setFromDay(localDayKey(start));
     setToDay(localDayKey(end));
+    setQuickPreset(String(days) as QuickPreset);
   }
 
   function applyAll() {
@@ -179,6 +190,7 @@ export default function TimelapsePage() {
 
     setStartId(first.id);
     setEndId(last.id);
+    setQuickPreset("all");
   }
 
   function safeCloseModal() {
@@ -196,6 +208,59 @@ export default function TimelapsePage() {
     cursor: "pointer",
     boxShadow: "0 15px 40px rgba(0,0,0,0.35)",
   };
+
+  // Pressable Quick Button (Pointer Events → Mobile/Touch friendly)
+  function QuickButton({
+    label,
+    active,
+    onClick,
+  }: {
+    label: string;
+    active: boolean;
+    onClick: () => void;
+  }) {
+    const baseBg = active ? "white" : "rgba(255,255,255,0.08)";
+    const baseColor = active ? "black" : "white";
+    const baseBorder = active
+      ? "1px solid rgba(255,255,255,0.35)"
+      : "1px solid rgba(255,255,255,0.14)";
+
+    return (
+      <button
+        onClick={onClick}
+        onPointerDown={(e) => {
+          e.currentTarget.style.transform = "scale(0.95)";
+          e.currentTarget.style.filter = "brightness(1.05)";
+        }}
+        onPointerUp={(e) => {
+          e.currentTarget.style.transform = "scale(1)";
+          e.currentTarget.style.filter = "none";
+        }}
+        onPointerCancel={(e) => {
+          e.currentTarget.style.transform = "scale(1)";
+          e.currentTarget.style.filter = "none";
+        }}
+        onPointerLeave={(e) => {
+          e.currentTarget.style.transform = "scale(1)";
+          e.currentTarget.style.filter = "none";
+        }}
+        style={{
+          padding: "11px 14px",
+          borderRadius: 999,
+          border: baseBorder,
+          background: baseBg,
+          color: baseColor,
+          fontWeight: 900,
+          cursor: "pointer",
+          transition: "transform 0.12s ease, background 0.12s ease, color 0.12s ease, border 0.12s ease",
+          boxShadow: active ? "0 10px 26px rgba(0,0,0,0.35)" : "0 6px 18px rgba(0,0,0,0.22)",
+          touchAction: "manipulation",
+        }}
+      >
+        {label}
+      </button>
+    );
+  }
 
   return (
     <Container>
@@ -267,9 +332,7 @@ export default function TimelapsePage() {
 
             {/* Frame Slider */}
             <label style={{ display: "block", marginTop: 10 }}>
-              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
-                Frame auswählen
-              </div>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Frame auswählen</div>
               <input
                 type="range"
                 min={0}
@@ -334,9 +397,7 @@ export default function TimelapsePage() {
 
             {/* Speed */}
             <label style={{ display: "block", marginTop: 12 }}>
-              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
-                Geschwindigkeit
-              </div>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Geschwindigkeit</div>
               <input
                 type="range"
                 min={100}
@@ -443,64 +504,24 @@ export default function TimelapsePage() {
               </button>
             </div>
 
-            {/* Quick */}
+            {/* Quick (mit Press-Effekt + Active Highlight) */}
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button
+              <QuickButton
+                label="Letzte 7"
+                active={quickPreset === "7"}
                 onClick={() => applyQuickLastDays(7)}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "white",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
-              >
-                Letzte 7
-              </button>
-              <button
+              />
+              <QuickButton
+                label="Letzte 10"
+                active={quickPreset === "10"}
                 onClick={() => applyQuickLastDays(10)}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "white",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
-              >
-                Letzte 10
-              </button>
-              <button
+              />
+              <QuickButton
+                label="Letzte 30"
+                active={quickPreset === "30"}
                 onClick={() => applyQuickLastDays(30)}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "white",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
-              >
-                Letzte 30
-              </button>
-              <button
-                onClick={applyAll}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "white",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
-              >
-                Alle
-              </button>
+              />
+              <QuickButton label="Alle" active={quickPreset === "all"} onClick={applyAll} />
             </div>
 
             {/* Content */}
