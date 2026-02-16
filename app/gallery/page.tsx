@@ -285,7 +285,7 @@ export default function GalleryPage() {
     zIndex: 1000,
   }}
 >
-  ＋
+  uplaod
 </a>
 
     </Container>
