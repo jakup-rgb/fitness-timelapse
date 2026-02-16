@@ -75,6 +75,35 @@ export default function Home() {
     setReminderTime(rt);
   }, []);
 
+  useEffect(() => {
+  if (!reminderTime) return;
+  if (Notification.permission !== "granted") return;
+
+  const interval = setInterval(async () => {
+    const now = new Date();
+    const currentTime =
+      String(now.getHours()).padStart(2, "0") +
+      ":" +
+      String(now.getMinutes()).padStart(2, "0");
+
+    if (currentTime !== reminderTime) return;
+
+    const today = dayKey(new Date());
+    const hasPhoto = photos.some(
+      (p) => dayKey(new Date(p.date)) === today
+    );
+
+    if (!hasPhoto) {
+      new Notification("LetsGo 🔥", {
+        body: "Du hast heute noch kein Progress-Foto gemacht!",
+      });
+    }
+  }, 60000); // jede Minute prüfen
+
+  return () => clearInterval(interval);
+}, [reminderTime, photos]);
+
+
   // check: heute foto?
   useEffect(() => {
     const today = dayKey(new Date());

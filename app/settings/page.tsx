@@ -39,6 +39,29 @@ export default function SettingsPage() {
             background: "transparent",
           }}
         />
+<button
+  onClick={async () => {
+    const permission = await Notification.requestPermission();
+    if (permission === "granted") {
+      alert("Benachrichtigungen aktiviert ✅");
+    } else {
+      alert("Benachrichtigungen nicht erlaubt ❌");
+    }
+  }}
+  style={{
+    marginTop: 12,
+    padding: "12px",
+    width: "100%",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.06)",
+    color: "white",
+    fontWeight: 600,
+  }}
+>
+  Benachrichtigungen aktivieren
+</button>
+
 
         <button
           onClick={save}
