@@ -219,7 +219,7 @@ export default function TimelapsePage() {
                   cursor: "pointer",
                 }}
               >
-                Bereich wählen
+                von - bis 
               </button>
             </div>
 
