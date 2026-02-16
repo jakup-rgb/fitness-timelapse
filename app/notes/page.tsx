@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Container, Topbar, ButtonLink, Card } from "../ui";
 import { getNote, upsertNote, deleteNote } from "../lib/db";
 
@@ -12,6 +13,8 @@ function localDayKey(date: Date) {
 }
 
 export default function NotesPage() {
+  const router = useRouter();
+
   const todayKey = useMemo(() => localDayKey(new Date()), []);
   const [day, setDay] = useState(todayKey);
   const [text, setText] = useState("");
@@ -31,9 +34,13 @@ export default function NotesPage() {
   }, [day]);
 
   async function handleSave() {
+    const t = text.trim();
+    if (!t) return;
+
     setSaving(true);
     try {
-      await upsertNote(day, text.trim());
+      await upsertNote(day, t);
+      router.push("/next"); // ✅ zurück ins Menü nach dem Speichern
     } finally {
       setSaving(false);
     }
@@ -65,9 +72,7 @@ export default function NotesPage() {
               color: "white",
             }}
           />
-          {day === todayKey && (
-            <div style={{ fontSize: 12, opacity: 0.7 }}>Heute</div>
-          )}
+          {day === todayKey && <div style={{ fontSize: 12, opacity: 0.7 }}>Heute</div>}
         </div>
 
         <div style={{ marginTop: 12 }}>
@@ -94,7 +99,7 @@ export default function NotesPage() {
         <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <button
             onClick={handleSave}
-            disabled={saving || loading}
+            disabled={saving || loading || text.trim().length === 0}
             style={{
               padding: "12px",
               borderRadius: 12,
@@ -102,8 +107,8 @@ export default function NotesPage() {
               background: "white",
               color: "black",
               fontWeight: 800,
-              cursor: saving || loading ? "not-allowed" : "pointer",
-              opacity: saving || loading ? 0.7 : 1,
+              cursor: saving || loading || text.trim().length === 0 ? "not-allowed" : "pointer",
+              opacity: saving || loading || text.trim().length === 0 ? 0.7 : 1,
             }}
           >
             {saving ? "Speichere..." : "Speichern"}
