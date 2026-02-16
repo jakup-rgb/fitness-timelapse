@@ -61,16 +61,17 @@ async function getDB() {
 
 // -------------------- Photos --------------------
 
-export async function addPhoto(blob: Blob): Promise<PhotoEntry> {
+export async function addPhoto(blob: Blob, dateISO?: string): Promise<PhotoEntry> {
   const db = await getDB();
   const entry: PhotoEntry = {
     id: makeId(),
-    date: new Date().toISOString(),
+    date: dateISO ?? new Date().toISOString(),
     blob,
   };
   await db.put("photos", entry);
   return entry;
 }
+
 
 export async function getAllPhotos(): Promise<PhotoEntry[]> {
   const db = await getDB();
