@@ -282,6 +282,7 @@ export default function GalleryPage() {
       borderRadius: 999,
       background: "white",
       color: "black",
+      margintop: 10,
       fontWeight: 700,
       fontSize: 16,
       textDecoration: "none",
