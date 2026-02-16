@@ -7,9 +7,8 @@ type Item = { href: string; label: string; icon: string };
 
 const items: Item[] = [
   { href: "/", label: "Progress", icon: "📸" },
-  { href: "/feed", label: "Feed", icon: "📝" },
-  { href: "/recipes", label: "Recipes", icon: "🍽️" },
-  { href: "/profile", label: "Profil", icon: "👤" },
+  { href: "/gallery", label: "Galerie", icon: "🖼️" },
+  { href: "/next", label: "Menu", icon: "☰" },
 ];
 
 export function BottomNav() {
@@ -18,11 +17,9 @@ export function BottomNav() {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4">
       <div className="mx-auto max-w-md rounded-3xl border border-white/10 bg-black/60 backdrop-blur-xl shadow-2xl">
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-3">
           {items.map((it) => {
-            const active =
-              pathname === it.href ||
-              (it.href !== "/" && pathname?.startsWith(it.href));
+            const active = pathname === it.href;
 
             return (
               <Link
