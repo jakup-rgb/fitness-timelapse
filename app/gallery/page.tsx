@@ -266,7 +266,7 @@ export default function GalleryPage() {
 <div
   style={{
     position: "fixed",
-    bottom: 90, // über Bottom Navigation
+    bottom: 110, // über Bottom Navigation
     left: 0,
     right: 0,
     display: "flex",
@@ -282,7 +282,6 @@ export default function GalleryPage() {
       borderRadius: 999,
       background: "white",
       color: "black",
-      marginTop: 10,
       fontWeight: 700,
       fontSize: 16,
       textDecoration: "none",
