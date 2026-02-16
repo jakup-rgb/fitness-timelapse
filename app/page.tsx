@@ -472,30 +472,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* ✅ Weiter Button UNTER dem Bild (nicht im Bild) */}
-          <div
-            style={{
-              marginTop: 22,
-              display: "flex",
-              justifyContent: "center",
-            }}
-          >
-            <a
-              href="/next"
-              style={{
-                padding: "16px 36px",
-                borderRadius: 999,
-                background: "white",
-                color: "black",
-                fontWeight: 800,
-                fontSize: 16,
-                textDecoration: "none",
-                boxShadow: "0 15px 40px rgba(0,0,0,0.35)",
-              }}
-            >
-              Weiter →
-            </a>
-          </div>
         </>
       )}
     </Container>
