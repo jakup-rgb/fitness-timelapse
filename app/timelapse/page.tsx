@@ -4,94 +4,135 @@ import { useEffect, useMemo, useState } from "react";
 import { getAllPhotos, type PhotoEntry } from "../lib/db";
 import { Container, Topbar, ButtonLink, Card } from "../ui";
 
-function fmtDate(d: string) {
-  try {
-    return new Date(d).toLocaleDateString();
-  } catch {
-    return d;
-  }
+function localDayKey(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`; // YYYY-MM-DD (lokal)
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
+function formatDateLabel(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleDateString();
 }
+
+type RangeMode = "date" | "photo";
 
 export default function TimelapsePage() {
-  const [photos, setPhotos] = useState<PhotoEntry[]>([]);
-  const [urls, setUrls] = useState<string[]>([]);
-
-  // Timelapse läuft besser chronologisch: alt -> neu
+  const [photosRaw, setPhotosRaw] = useState<PhotoEntry[]>([]);
   const photosChrono = useMemo(() => {
-    const copy = [...photos];
-    copy.reverse(); // weil getAllPhotos() neueste -> älteste liefert
+    // getAllPhotos liefert bei dir: neueste -> älteste
+    // Für Timelapse wollen wir: älteste -> neueste
+    const copy = [...photosRaw];
+    copy.sort((a, b) => a.date.localeCompare(b.date));
     return copy;
-  }, [photos]);
+  }, [photosRaw]);
 
+  // Auswahl (Range)
+  const [mode, setMode] = useState<RangeMode>("date");
+  const [modalOpen, setModalOpen] = useState(false);
+
+  // Datum-Range (inklusive)
+  const [fromDay, setFromDay] = useState<string>("");
+  const [toDay, setToDay] = useState<string>("");
+
+  // Foto-Range (über Index)
+  const [startId, setStartId] = useState<string>("");
+  const [endId, setEndId] = useState<string>("");
+
+  // Aktiver gefilterter Bereich
+  const filteredPhotos = useMemo(() => {
+    if (photosChrono.length === 0) return [];
+
+    // Initial defaults setzen (falls leer)
+    // -> passiert auch nach dem Laden
+    const safeFrom = fromDay || localDayKey(new Date(photosChrono[0].date));
+    const safeTo =
+      toDay || localDayKey(new Date(photosChrono[photosChrono.length - 1].date));
+
+    if (mode === "date") {
+      return photosChrono.filter((p) => {
+        const k = localDayKey(new Date(p.date));
+        return k >= safeFrom && k <= safeTo;
+      });
+    }
+
+    // mode === "photo"
+    const sIdx = Math.max(
+      0,
+      photosChrono.findIndex((p) => p.id === (startId || photosChrono[0].id))
+    );
+    const eIdx = Math.max(
+      0,
+      photosChrono.findIndex(
+        (p) => p.id === (endId || photosChrono[photosChrono.length - 1].id)
+      )
+    );
+
+    const a = Math.min(sIdx, eIdx);
+    const b = Math.max(sIdx, eIdx);
+
+    return photosChrono.slice(a, b + 1);
+  }, [photosChrono, mode, fromDay, toDay, startId, endId]);
+
+  // URLs für gefilterte Photos
+  const [urls, setUrls] = useState<string[]>([]);
   const [index, setIndex] = useState(0);
-  const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState(300);
-
-  // Bereichsauswahl (Indices in photosChrono/urls)
-  const [startIdx, setStartIdx] = useState(0);
-  const [endIdx, setEndIdx] = useState(0);
+  const [playing, setPlaying] = useState(true);
+  const [speed, setSpeed] = useState(300); // ms pro Bild
 
   // Fotos laden
   useEffect(() => {
     (async () => {
       const all = await getAllPhotos();
-      setPhotos(all);
+      setPhotosRaw(all);
     })();
   }, []);
 
-  // Blob -> URLs (chronologisch passend)
+  // Defaults setzen, sobald Photos da sind
   useEffect(() => {
-    const next = photosChrono.map((p) => URL.createObjectURL(p.blob));
+    if (photosChrono.length === 0) return;
+
+    const first = photosChrono[0];
+    const last = photosChrono[photosChrono.length - 1];
+
+    setFromDay((v) => v || localDayKey(new Date(first.date)));
+    setToDay((v) => v || localDayKey(new Date(last.date)));
+
+    setStartId((v) => v || first.id);
+    setEndId((v) => v || last.id);
+  }, [photosChrono]);
+
+  // Blob → URLs (für gefilterte Photos)
+  useEffect(() => {
+    const next = filteredPhotos.map((p) => URL.createObjectURL(p.blob));
     setUrls(next);
+    setIndex(0); // wenn Bereich ändert: zurück zum Anfang
+    setPlaying(true);
 
     return () => {
       next.forEach((u) => URL.revokeObjectURL(u));
     };
-  }, [photosChrono]);
-
-  // Default Range setzen (z.B. letzte 10 Fotos)
-  useEffect(() => {
-    const len = photosChrono.length;
-    if (len === 0) return;
-
-    const defaultStart = Math.max(0, len - 10);
-    const defaultEnd = len - 1;
-
-    setStartIdx(defaultStart);
-    setEndIdx(defaultEnd);
-
-    // Index in den Bereich setzen (z.B. auf Start)
-    setIndex(defaultStart);
-    setPlaying(false);
-  }, [photosChrono.length]); // nur wenn Anzahl sich ändert
-
-  // Wenn Range angepasst wird: Index sauber halten
-  useEffect(() => {
-    if (urls.length === 0) return;
-    setIndex((i) => clamp(i, startIdx, endIdx));
-    // wenn Range geändert wird, stoppen wir lieber (fühlt sich sauberer an)
-    setPlaying(false);
-  }, [startIdx, endIdx, urls.length]);
+  }, [filteredPhotos]);
 
   function prevFrame() {
-    setIndex((i) => clamp(i - 1, startIdx, endIdx));
+    if (urls.length === 0) return;
+    setIndex((i) => (i - 1 + urls.length) % urls.length);
   }
 
   function nextFrame() {
-    setIndex((i) => clamp(i + 1, startIdx, endIdx));
+    if (urls.length === 0) return;
+    setIndex((i) => (i + 1) % urls.length);
   }
 
-  // Slideshow nur im Bereich [startIdx..endIdx]
+  // Slideshow
   useEffect(() => {
     if (urls.length === 0 || !playing) return;
 
     const timer = setInterval(() => {
       setIndex((i) => {
-        if (i >= endIdx) {
+        // wenn letztes Bild erreicht → stoppen
+        if (i >= urls.length - 1) {
           setPlaying(false);
           return i;
         }
@@ -100,11 +141,48 @@ export default function TimelapsePage() {
     }, speed);
 
     return () => clearInterval(timer);
-  }, [urls.length, playing, speed, endIdx]);
+  }, [urls, playing, speed]);
 
-  const startLabel = photosChrono[startIdx]?.date ? fmtDate(photosChrono[startIdx].date) : "-";
-  const endLabel = photosChrono[endIdx]?.date ? fmtDate(photosChrono[endIdx].date) : "-";
-  const frameCount = urls.length ? endIdx - startIdx + 1 : 0;
+  const activeRangeLabel = useMemo(() => {
+    if (filteredPhotos.length === 0) return "—";
+
+    const a = filteredPhotos[0];
+    const b = filteredPhotos[filteredPhotos.length - 1];
+
+    const aKey = localDayKey(new Date(a.date));
+    const bKey = localDayKey(new Date(b.date));
+
+    return `${aKey} → ${bKey} (${filteredPhotos.length} Fotos)`;
+  }, [filteredPhotos]);
+
+  function applyQuickLastDays(days: number) {
+    if (photosChrono.length === 0) return;
+    const last = photosChrono[photosChrono.length - 1];
+    const end = new Date(last.date);
+    const start = new Date(end);
+    start.setDate(start.getDate() - (days - 1));
+
+    setMode("date");
+    setFromDay(localDayKey(start));
+    setToDay(localDayKey(end));
+  }
+
+  function applyAll() {
+    if (photosChrono.length === 0) return;
+    const first = photosChrono[0];
+    const last = photosChrono[photosChrono.length - 1];
+
+    setMode("date");
+    setFromDay(localDayKey(new Date(first.date)));
+    setToDay(localDayKey(new Date(last.date)));
+
+    setStartId(first.id);
+    setEndId(last.id);
+  }
+
+  function safeCloseModal() {
+    setModalOpen(false);
+  }
 
   return (
     <Container>
@@ -112,10 +190,40 @@ export default function TimelapsePage() {
 
       <Card>
         {urls.length === 0 ? (
-          <p style={{ margin: 0, opacity: 0.8 }}>Noch keine Fotos.</p>
+          <p style={{ margin: 0, opacity: 0.8 }}>Noch keine Fotos im ausgewählten Bereich.</p>
         ) : (
           <>
-            {/* Preview */}
+            {/* Header / Bereich */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                marginBottom: 10,
+              }}
+            >
+              <div style={{ fontSize: 12, opacity: 0.75 }}>
+                Bereich: <span style={{ fontWeight: 700 }}>{activeRangeLabel}</span>
+              </div>
+
+              <button
+                onClick={() => setModalOpen(true)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "white",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Bereich wählen
+              </button>
+            </div>
+
+            {/* Bild */}
             <div
               style={{
                 width: "100%",
@@ -140,128 +248,19 @@ export default function TimelapsePage() {
               />
             </div>
 
-            {/* Range Info */}
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <div><b>Von:</b> {startLabel}</div>
-              <div><b>Bis:</b> {endLabel}</div>
-              <div><b>Frames:</b> {frameCount}</div>
-            </div>
+            <p style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
+              {index + 1} / {urls.length}
+            </p>
 
-            {/* Range Sliders */}
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Timelapse-Bereich auswählen</div>
-
-              <label style={{ display: "block" }}>
-                <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
-                  Start ({startIdx + 1})
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(0, urls.length - 1)}
-                  step={1}
-                  value={startIdx}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    setStartIdx(v);
-                    if (v > endIdx) setEndIdx(v); // Start darf End nicht überholen
-                  }}
-                  style={{ width: "100%" }}
-                />
-              </label>
-
-              <label style={{ display: "block", marginTop: 10 }}>
-                <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
-                  Ende ({endIdx + 1})
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(0, urls.length - 1)}
-                  step={1}
-                  value={endIdx}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    setEndIdx(v);
-                    if (v < startIdx) setStartIdx(v); // End darf Start nicht unterbieten
-                  }}
-                  style={{ width: "100%" }}
-                />
-              </label>
-
-              {/* Quick presets */}
-              <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  onClick={() => {
-                    const len = urls.length;
-                    const s = Math.max(0, len - 7);
-                    const e = len - 1;
-                    setStartIdx(s);
-                    setEndIdx(e);
-                    setIndex(s);
-                  }}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: "1px solid rgba(0,0,0,0.15)",
-                    background: "transparent",
-                    cursor: "pointer",
-                    fontSize: 13,
-                  }}
-                >
-                  Letzte 7
-                </button>
-
-                <button
-                  onClick={() => {
-                    const len = urls.length;
-                    const s = Math.max(0, len - 10);
-                    const e = len - 1;
-                    setStartIdx(s);
-                    setEndIdx(e);
-                    setIndex(s);
-                  }}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: "1px solid rgba(0,0,0,0.15)",
-                    background: "transparent",
-                    cursor: "pointer",
-                    fontSize: 13,
-                  }}
-                >
-                  Letzte 10
-                </button>
-
-                <button
-                  onClick={() => {
-                    setStartIdx(0);
-                    setEndIdx(urls.length - 1);
-                    setIndex(0);
-                  }}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: "1px solid rgba(0,0,0,0.15)",
-                    background: "transparent",
-                    cursor: "pointer",
-                    fontSize: 13,
-                  }}
-                >
-                  Alle
-                </button>
-              </div>
-            </div>
-
-            {/* Frame scrub (innerhalb Range) */}
-            <label style={{ display: "block", marginTop: 14 }}>
+            {/* Frame Slider */}
+            <label style={{ display: "block", marginTop: 10 }}>
               <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
-                Frame auswählen (im Bereich)
+                Frame auswählen
               </div>
               <input
                 type="range"
-                min={startIdx}
-                max={endIdx}
+                min={0}
+                max={Math.max(0, urls.length - 1)}
                 step={1}
                 value={index}
                 onChange={(e) => {
@@ -270,18 +269,12 @@ export default function TimelapsePage() {
                 }}
                 style={{ width: "100%" }}
               />
-              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                Frame: {index + 1} / {urls.length}
-              </div>
             </label>
 
             {/* Controls */}
-            <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+            <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
               <button
-                onClick={() => {
-                  setPlaying(false);
-                  setIndex(startIdx);
-                }}
+                onClick={prevFrame}
                 style={{
                   flex: 1,
                   padding: "8px",
@@ -296,8 +289,7 @@ export default function TimelapsePage() {
 
               <button
                 onClick={() => {
-                  // Wenn am Ende: wieder auf Start
-                  if (!playing && index >= endIdx) setIndex(startIdx);
+                  if (!playing && index >= urls.length - 1) setIndex(0);
                   setPlaying((p) => !p);
                 }}
                 style={{
@@ -328,7 +320,7 @@ export default function TimelapsePage() {
             </div>
 
             {/* Speed */}
-            <label style={{ display: "block", marginTop: 14 }}>
+            <label style={{ display: "block", marginTop: 12 }}>
               <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
                 Geschwindigkeit
               </div>
@@ -346,6 +338,284 @@ export default function TimelapsePage() {
           </>
         )}
       </Card>
+
+      {/* Modal */}
+      {modalOpen && (
+        <div
+          onMouseDown={(e) => {
+            // Klick außerhalb schließt
+            if (e.target === e.currentTarget) safeCloseModal();
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            zIndex: 200,
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              borderRadius: 18,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(20,20,20,0.98)",
+              padding: 14,
+              boxShadow: "0 30px 80px rgba(0,0,0,0.55)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <div style={{ fontWeight: 900, fontSize: 16 }}>Timelapse-Bereich</div>
+              <button
+                onClick={safeCloseModal}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "white",
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Mode Tabs */}
+            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button
+                onClick={() => setMode("date")}
+                style={{
+                  padding: "12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: mode === "date" ? "white" : "rgba(255,255,255,0.06)",
+                  color: mode === "date" ? "black" : "white",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                Nach Datum
+              </button>
+              <button
+                onClick={() => setMode("photo")}
+                style={{
+                  padding: "12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: mode === "photo" ? "white" : "rgba(255,255,255,0.06)",
+                  color: mode === "photo" ? "black" : "white",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                Nach Foto
+              </button>
+            </div>
+
+            {/* Quick */}
+            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                onClick={() => applyQuickLastDays(7)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "white",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Letzte 7
+              </button>
+              <button
+                onClick={() => applyQuickLastDays(10)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "white",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Letzte 10
+              </button>
+              <button
+                onClick={() => applyQuickLastDays(30)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "white",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Letzte 30
+              </button>
+              <button
+                onClick={applyAll}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "white",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Alle
+              </button>
+            </div>
+
+            {/* Content */}
+            {mode === "date" ? (
+              <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Von</div>
+                  <input
+                    type="date"
+                    value={fromDay}
+                    onChange={(e) => setFromDay(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.06)",
+                      color: "white",
+                    }}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Bis</div>
+                  <input
+                    type="date"
+                    value={toDay}
+                    onChange={(e) => setToDay(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.06)",
+                      color: "white",
+                    }}
+                  />
+                </div>
+
+                <div style={{ gridColumn: "1 / -1", fontSize: 12, opacity: 0.65 }}>
+                  Tipp: Wenn „Von“ größer als „Bis“ ist, ist es egal – wir filtern trotzdem korrekt.
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Start-Foto</div>
+                  <select
+                    value={startId}
+                    onChange={(e) => setStartId(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.06)",
+                      color: "white",
+                    }}
+                  >
+                    {photosChrono.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {formatDateLabel(p.date)} ({localDayKey(new Date(p.date))})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Ende-Foto</div>
+                  <select
+                    value={endId}
+                    onChange={(e) => setEndId(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.06)",
+                      color: "white",
+                    }}
+                  >
+                    {photosChrono.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {formatDateLabel(p.date)} ({localDayKey(new Date(p.date))})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ gridColumn: "1 / -1", fontSize: 12, opacity: 0.65 }}>
+                  Du kannst auch „Ende“ vor „Start“ auswählen – wir drehen es automatisch richtig.
+                </div>
+              </div>
+            )}
+
+            {/* Bottom Actions */}
+            <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button
+                onClick={safeCloseModal}
+                style={{
+                  padding: "12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "white",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Schließen
+              </button>
+              <button
+                onClick={() => {
+                  // „Anwenden“ ist hier eigentlich sofort (State ist live),
+                  // aber fühlt sich UX-mäßig besser an.
+                  setIndex(0);
+                  setPlaying(true);
+                  safeCloseModal();
+                }}
+                style={{
+                  padding: "12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(0,0,0,0.15)",
+                  background: "white",
+                  color: "black",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                Anwenden
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Container>
   );
 }
