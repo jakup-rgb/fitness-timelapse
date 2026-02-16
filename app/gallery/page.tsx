@@ -231,6 +231,38 @@ export default function GalleryPage() {
           </div>
         </div>
       )}
+      {/* Floating Upload Button */}
+<div
+  style={{
+    position: "fixed",
+    bottom: 24,
+    left: 0,
+    right: 0,
+    display: "flex",
+    justifyContent: "center",
+    pointerEvents: "none",
+    zIndex: 50,
+  }}
+>
+  <a
+    href="/add"
+    style={{
+      pointerEvents: "auto",
+      padding: "16px 28px",
+      borderRadius: 999,
+      background: "white",
+      color: "black",
+      fontWeight: 800,
+      fontSize: 15,
+      textDecoration: "none",
+      boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
+      transition: "all 0.2s ease",
+    }}
+  >
+    ＋ Upload
+  </a>
+</div>
+
     </Container>
   );
 }
