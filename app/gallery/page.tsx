@@ -1,8 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { deletePhoto, getAllPhotos, type PhotoEntry } from "../lib/db";
 import { Container, Topbar, ButtonLink, Card } from "../ui";
+
+// Lokal (DE) Tag-Key: YYYY-MM-DD in lokaler Zeit (kein UTC-Bug)
+function localDayKey(iso: string) {
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function formatDayLabel(dayKey: string) {
+  // dayKey = YYYY-MM-DD
+  const [y, m, d] = dayKey.split("-").map(Number);
+  const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
+  return dt.toLocaleDateString("de-DE", {
+    weekday: "long",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
 
 export default function GalleryPage() {
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
@@ -37,11 +58,30 @@ export default function GalleryPage() {
     await refresh();
   }
 
-  const grid: React.CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
-    gap: 8,
-  };
+  const openPhoto = useMemo(
+    () => (openId ? photos.find((p) => p.id === openId) ?? null : null),
+    [openId, photos]
+  );
+
+  // ✅ Gruppierung nach Tag
+  const grouped = useMemo(() => {
+    const map = new Map<string, PhotoEntry[]>();
+    for (const p of photos) {
+      const key = localDayKey(p.date);
+      const arr = map.get(key) ?? [];
+      arr.push(p);
+      map.set(key, arr);
+    }
+
+    // Photos sind bei dir schon neueste->älteste, wir lassen die Reihenfolge so.
+    // Day-Keys sortieren: neueste Tage oben
+    const keys = Array.from(map.keys()).sort((a, b) => b.localeCompare(a));
+
+    return keys.map((k) => ({
+      dayKey: k,
+      items: map.get(k) ?? [],
+    }));
+  }, [photos]);
 
   return (
     <Container>
@@ -54,38 +94,55 @@ export default function GalleryPage() {
           </p>
         </Card>
       ) : (
-        <Card>
-          <div style={grid}>
-            {photos.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setOpenId(p.id)}
+        <div style={{ display: "grid", gap: 14 }}>
+          {grouped.map((group) => (
+            <Card key={group.dayKey}>
+              {/* Datum-Header */}
+              <div style={{ fontWeight: 700, marginBottom: 10 }}>
+                {formatDayLabel(group.dayKey)}
+              </div>
+
+              {/* Grid wie Galerie */}
+              <div
                 style={{
-                  border: "none",
-                  padding: 0,
-                  background: "transparent",
-                  cursor: "pointer",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: 8,
                 }}
               >
-                <img
-                  src={urls[p.id]}
-                  alt="thumb"
-                  style={{
-                    width: "100%",
-                    aspectRatio: "1 / 1",
-                    objectFit: "cover",
-                    borderRadius: 12,
-                    display: "block",
-                  }}
-                />
-              </button>
-            ))}
-          </div>
-        </Card>
+                {group.items.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setOpenId(p.id)}
+                    style={{
+                      border: "none",
+                      padding: 0,
+                      background: "transparent",
+                      cursor: "pointer",
+                    }}
+                    aria-label="Foto öffnen"
+                  >
+                    <img
+                      src={urls[p.id]}
+                      alt="thumb"
+                      style={{
+                        width: "100%",
+                        aspectRatio: "1 / 1",
+                        objectFit: "cover",
+                        borderRadius: 12,
+                        display: "block",
+                      }}
+                    />
+                  </button>
+                ))}
+              </div>
+            </Card>
+          ))}
+        </div>
       )}
 
       {/* Lightbox */}
-      {openId && (
+      {openId && openPhoto && (
         <div
           onClick={() => setOpenId(null)}
           style={{
@@ -109,20 +166,12 @@ export default function GalleryPage() {
               border: "1px solid rgba(255,255,255,0.12)",
             }}
           >
-            <div style={{ padding: 12, fontSize: 12, opacity: 0.8, color: "white" }}>
-              {(() => {
-                const p = photos.find((x) => x.id === openId);
-                if (!p) return null;
-                return (
-                  <>
-                    {new Date(p.date).toLocaleDateString()}{" "}
-                    {new Date(p.date).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </>
-                );
-              })()}
+            <div style={{ padding: 12, fontSize: 12, opacity: 0.9, color: "white" }}>
+              {new Date(openPhoto.date).toLocaleDateString("de-DE")}{" "}
+              {new Date(openPhoto.date).toLocaleTimeString("de-DE", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </div>
 
             <div
