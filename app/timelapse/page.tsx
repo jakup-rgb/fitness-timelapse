@@ -4,87 +4,94 @@ import { useEffect, useMemo, useState } from "react";
 import { getAllPhotos, type PhotoEntry } from "../lib/db";
 import { Container, Topbar, ButtonLink, Card } from "../ui";
 
-function localDayKey(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+function fmtDate(d: string) {
+  try {
+    return new Date(d).toLocaleDateString();
+  } catch {
+    return d;
+  }
 }
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString();
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
 }
 
 export default function TimelapsePage() {
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
-  const [rangeStart, setRangeStart] = useState(0);
-  const [rangeEnd, setRangeEnd] = useState(0);
-
   const [urls, setUrls] = useState<string[]>([]);
-  const [index, setIndex] = useState(0);
 
-  const [playing, setPlaying] = useState(true);
-  const [speed, setSpeed] = useState(300); // ms pro Bild
+  // Timelapse läuft besser chronologisch: alt -> neu
+  const photosChrono = useMemo(() => {
+    const copy = [...photos];
+    copy.reverse(); // weil getAllPhotos() neueste -> älteste liefert
+    return copy;
+  }, [photos]);
+
+  const [index, setIndex] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(300);
+
+  // Bereichsauswahl (Indices in photosChrono/urls)
+  const [startIdx, setStartIdx] = useState(0);
+  const [endIdx, setEndIdx] = useState(0);
 
   // Fotos laden
   useEffect(() => {
     (async () => {
-      const all = await getAllPhotos(); // kommt neueste -> älteste
-      const asc = [...all].reverse(); // für Timelapse: älteste -> neueste
-      setPhotos(asc);
-
-      // Default: ganze Range
-      setRangeStart(0);
-      setRangeEnd(Math.max(0, asc.length - 1));
-      setIndex(0);
+      const all = await getAllPhotos();
+      setPhotos(all);
     })();
   }, []);
 
-  // Gefilterte Photos nach Range (inklusive)
-  const rangedPhotos = useMemo(() => {
-    if (photos.length === 0) return [];
-    const s = Math.min(rangeStart, rangeEnd);
-    const e = Math.max(rangeStart, rangeEnd);
-    return photos.slice(s, e + 1);
-  }, [photos, rangeStart, rangeEnd]);
-
-  const rangedStartAbs = useMemo(() => Math.min(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
-  const rangedEndAbs = useMemo(() => Math.max(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
-
-  // URLs nur für rangedPhotos erzeugen + sauber revoken
+  // Blob -> URLs (chronologisch passend)
   useEffect(() => {
-    const next = rangedPhotos.map((p) => URL.createObjectURL(p.blob));
+    const next = photosChrono.map((p) => URL.createObjectURL(p.blob));
     setUrls(next);
-
-    // Index innerhalb der Range halten
-    setIndex((i) => {
-      if (next.length === 0) return 0;
-      return Math.max(0, Math.min(i, next.length - 1));
-    });
 
     return () => {
       next.forEach((u) => URL.revokeObjectURL(u));
     };
-  }, [rangedPhotos]);
+  }, [photosChrono]);
 
-  // Prev/Next innerhalb Range
-  function prevFrame() {
+  // Default Range setzen (z.B. letzte 10 Fotos)
+  useEffect(() => {
+    const len = photosChrono.length;
+    if (len === 0) return;
+
+    const defaultStart = Math.max(0, len - 10);
+    const defaultEnd = len - 1;
+
+    setStartIdx(defaultStart);
+    setEndIdx(defaultEnd);
+
+    // Index in den Bereich setzen (z.B. auf Start)
+    setIndex(defaultStart);
     setPlaying(false);
-    setIndex((i) => Math.max(0, i - 1));
+  }, [photosChrono.length]); // nur wenn Anzahl sich ändert
+
+  // Wenn Range angepasst wird: Index sauber halten
+  useEffect(() => {
+    if (urls.length === 0) return;
+    setIndex((i) => clamp(i, startIdx, endIdx));
+    // wenn Range geändert wird, stoppen wir lieber (fühlt sich sauberer an)
+    setPlaying(false);
+  }, [startIdx, endIdx, urls.length]);
+
+  function prevFrame() {
+    setIndex((i) => clamp(i - 1, startIdx, endIdx));
   }
 
   function nextFrame() {
-    setPlaying(false);
-    setIndex((i) => Math.min(Math.max(0, urls.length - 1), i + 1));
+    setIndex((i) => clamp(i + 1, startIdx, endIdx));
   }
 
-  // Slideshow (stoppt am Ende der Range)
+  // Slideshow nur im Bereich [startIdx..endIdx]
   useEffect(() => {
     if (urls.length === 0 || !playing) return;
 
     const timer = setInterval(() => {
       setIndex((i) => {
-        if (i >= urls.length - 1) {
+        if (i >= endIdx) {
           setPlaying(false);
           return i;
         }
@@ -93,40 +100,22 @@ export default function TimelapsePage() {
     }, speed);
 
     return () => clearInterval(timer);
-  }, [urls, playing, speed]);
+  }, [urls.length, playing, speed, endIdx]);
 
-  // Quick Range (letzte N Bilder / Tage-ähnlich)
-  function setLastN(n: number) {
-    if (photos.length === 0) return;
-    const end = photos.length - 1;
-    const start = Math.max(0, end - (n - 1));
-    setPlaying(false);
-    setRangeStart(start);
-    setRangeEnd(end);
-    setIndex(0);
-  }
-
-  // Hilfetexte
-  const startLabel = useMemo(() => {
-    if (photos.length === 0) return "";
-    return fmtDate(photos[rangedStartAbs].date);
-  }, [photos, rangedStartAbs]);
-
-  const endLabel = useMemo(() => {
-    if (photos.length === 0) return "";
-    return fmtDate(photos[rangedEndAbs].date);
-  }, [photos, rangedEndAbs]);
+  const startLabel = photosChrono[startIdx]?.date ? fmtDate(photosChrono[startIdx].date) : "-";
+  const endLabel = photosChrono[endIdx]?.date ? fmtDate(photosChrono[endIdx].date) : "-";
+  const frameCount = urls.length ? endIdx - startIdx + 1 : 0;
 
   return (
     <Container>
       <Topbar title="Timelapse" right={<ButtonLink href="/next">Zurück</ButtonLink>} />
 
       <Card>
-        {photos.length === 0 ? (
+        {urls.length === 0 ? (
           <p style={{ margin: 0, opacity: 0.8 }}>Noch keine Fotos.</p>
         ) : (
           <>
-            {/* Viewer */}
+            {/* Preview */}
             <div
               style={{
                 width: "100%",
@@ -139,142 +128,166 @@ export default function TimelapsePage() {
                 justifyContent: "center",
               }}
             >
-              {urls.length > 0 && (
-                <img
-                  src={urls[index]}
-                  alt="timelapse"
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "contain",
-                    display: "block",
-                  }}
-                />
-              )}
+              <img
+                src={urls[index]}
+                alt="timelapse"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  display: "block",
+                }}
+              />
             </div>
 
-            <p style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
-              Frame: {index + 1} / {urls.length}{" "}
-              <span style={{ opacity: 0.6 }}>
-                (Range: {rangedStartAbs + 1}–{rangedEndAbs + 1} von {photos.length})
-              </span>
-            </p>
+            {/* Range Info */}
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div><b>Von:</b> {startLabel}</div>
+              <div><b>Bis:</b> {endLabel}</div>
+              <div><b>Frames:</b> {frameCount}</div>
+            </div>
 
-            {/* Range Picker */}
-            <div style={{ marginTop: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                <div style={{ fontSize: 12, opacity: 0.8 }}>
-                  Von: <b>{startLabel}</b>
+            {/* Range Sliders */}
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Timelapse-Bereich auswählen</div>
+
+              <label style={{ display: "block" }}>
+                <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
+                  Start ({startIdx + 1})
                 </div>
-                <div style={{ fontSize: 12, opacity: 0.8 }}>
-                  Bis: <b>{endLabel}</b>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(0, urls.length - 1)}
+                  step={1}
+                  value={startIdx}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setStartIdx(v);
+                    if (v > endIdx) setEndIdx(v); // Start darf End nicht überholen
+                  }}
+                  style={{ width: "100%" }}
+                />
+              </label>
+
+              <label style={{ display: "block", marginTop: 10 }}>
+                <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
+                  Ende ({endIdx + 1})
                 </div>
-              </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(0, urls.length - 1)}
+                  step={1}
+                  value={endIdx}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setEndIdx(v);
+                    if (v < startIdx) setStartIdx(v); // End darf Start nicht unterbieten
+                  }}
+                  style={{ width: "100%" }}
+                />
+              </label>
 
-              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                <label style={{ display: "block" }}>
-                  <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Start</div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={Math.max(0, photos.length - 1)}
-                    step={1}
-                    value={rangeStart}
-                    onChange={(e) => {
-                      setPlaying(false);
-                      const v = Number(e.target.value);
-                      setRangeStart(v);
-                      // wenn Start über Ende: Ende nachziehen
-                      if (v > rangeEnd) setRangeEnd(v);
-                      setIndex(0);
-                    }}
-                    style={{ width: "100%" }}
-                  />
-                </label>
-
-                <label style={{ display: "block" }}>
-                  <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Ende</div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={Math.max(0, photos.length - 1)}
-                    step={1}
-                    value={rangeEnd}
-                    onChange={(e) => {
-                      setPlaying(false);
-                      const v = Number(e.target.value);
-                      setRangeEnd(v);
-                      // wenn Ende unter Start: Start nachziehen
-                      if (v < rangeStart) setRangeStart(v);
-                      setIndex(0);
-                    }}
-                    style={{ width: "100%" }}
-                  />
-                </label>
-              </div>
-
-              {/* Quick Buttons */}
-              <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {/* Quick presets */}
+              <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
-                  onClick={() => setLastN(7)}
+                  onClick={() => {
+                    const len = urls.length;
+                    const s = Math.max(0, len - 7);
+                    const e = len - 1;
+                    setStartIdx(s);
+                    setEndIdx(e);
+                    setIndex(s);
+                  }}
                   style={{
-                    padding: "8px 12px",
-                    borderRadius: 999,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.06)",
-                    color: "white",
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(0,0,0,0.15)",
+                    background: "transparent",
                     cursor: "pointer",
                     fontSize: 13,
-                    fontWeight: 700,
                   }}
                 >
                   Letzte 7
                 </button>
+
                 <button
-                  onClick={() => setLastN(10)}
+                  onClick={() => {
+                    const len = urls.length;
+                    const s = Math.max(0, len - 10);
+                    const e = len - 1;
+                    setStartIdx(s);
+                    setEndIdx(e);
+                    setIndex(s);
+                  }}
                   style={{
-                    padding: "8px 12px",
-                    borderRadius: 999,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.06)",
-                    color: "white",
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(0,0,0,0.15)",
+                    background: "transparent",
                     cursor: "pointer",
                     fontSize: 13,
-                    fontWeight: 700,
                   }}
                 >
                   Letzte 10
                 </button>
+
                 <button
-                  onClick={() => setLastN(30)}
+                  onClick={() => {
+                    setStartIdx(0);
+                    setEndIdx(urls.length - 1);
+                    setIndex(0);
+                  }}
                   style={{
-                    padding: "8px 12px",
-                    borderRadius: 999,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.06)",
-                    color: "white",
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(0,0,0,0.15)",
+                    background: "transparent",
                     cursor: "pointer",
                     fontSize: 13,
-                    fontWeight: 700,
                   }}
                 >
-                  Letzte 30
+                  Alle
                 </button>
               </div>
             </div>
 
+            {/* Frame scrub (innerhalb Range) */}
+            <label style={{ display: "block", marginTop: 14 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
+                Frame auswählen (im Bereich)
+              </div>
+              <input
+                type="range"
+                min={startIdx}
+                max={endIdx}
+                step={1}
+                value={index}
+                onChange={(e) => {
+                  setPlaying(false);
+                  setIndex(Number(e.target.value));
+                }}
+                style={{ width: "100%" }}
+              />
+              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+                Frame: {index + 1} / {urls.length}
+              </div>
+            </label>
+
             {/* Controls */}
             <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
               <button
-                onClick={prevFrame}
-                disabled={urls.length === 0}
+                onClick={() => {
+                  setPlaying(false);
+                  setIndex(startIdx);
+                }}
                 style={{
                   flex: 1,
-                  padding: "10px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "white",
+                  padding: "8px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(0,0,0,0.15)",
+                  background: "transparent",
                   cursor: "pointer",
                 }}
               >
@@ -283,20 +296,16 @@ export default function TimelapsePage() {
 
               <button
                 onClick={() => {
-                  if (!playing && index >= urls.length - 1) {
-                    setIndex(0); // von Range-Start
-                  }
+                  // Wenn am Ende: wieder auf Start
+                  if (!playing && index >= endIdx) setIndex(startIdx);
                   setPlaying((p) => !p);
                 }}
-                disabled={urls.length === 0}
                 style={{
                   flex: 2,
-                  padding: "10px",
-                  borderRadius: 12,
+                  padding: "8px",
+                  borderRadius: 10,
                   border: "1px solid rgba(0,0,0,0.15)",
-                  background: "white",
-                  color: "black",
-                  fontWeight: 800,
+                  background: "transparent",
                   cursor: "pointer",
                 }}
               >
@@ -305,14 +314,12 @@ export default function TimelapsePage() {
 
               <button
                 onClick={nextFrame}
-                disabled={urls.length === 0}
                 style={{
                   flex: 1,
-                  padding: "10px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "white",
+                  padding: "8px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(0,0,0,0.15)",
+                  background: "transparent",
                   cursor: "pointer",
                 }}
               >
@@ -321,8 +328,10 @@ export default function TimelapsePage() {
             </div>
 
             {/* Speed */}
-            <label style={{ display: "block", marginTop: 12 }}>
-              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Geschwindigkeit</div>
+            <label style={{ display: "block", marginTop: 14 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
+                Geschwindigkeit
+              </div>
               <input
                 type="range"
                 min={100}
