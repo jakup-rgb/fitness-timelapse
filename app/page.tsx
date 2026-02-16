@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getAllPhotos, type PhotoEntry } from "./lib/db";
 import { Container, Topbar, ButtonLink, Card } from "./ui";
 
@@ -39,7 +39,6 @@ export default function Home() {
 
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // URLs für erstes + letztes Foto
   const [firstUrl, setFirstUrl] = useState<string | null>(null);
   const [latestUrl, setLatestUrl] = useState<string | null>(null);
 
@@ -89,8 +88,7 @@ export default function Home() {
       if (document.visibilityState === "visible") refresh();
     }
     document.addEventListener("visibilitychange", onVisibilityChange);
-    return () =>
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -100,9 +98,7 @@ export default function Home() {
     if (latestUrl) URL.revokeObjectURL(latestUrl);
 
     const nextFirst = firstPhoto ? URL.createObjectURL(firstPhoto.blob) : null;
-    const nextLatest = latestPhoto
-      ? URL.createObjectURL(latestPhoto.blob)
-      : null;
+    const nextLatest = latestPhoto ? URL.createObjectURL(latestPhoto.blob) : null;
 
     setFirstUrl(nextFirst);
     setLatestUrl(nextLatest);
@@ -120,7 +116,6 @@ export default function Home() {
       if (!menuOpen) return;
       const target = e.target as HTMLElement | null;
       if (!target) return;
-      // wenn Klick irgendwo außerhalb vom Menü-Block (Button+Dropdown)
       const menuRoot = document.getElementById("home-menu-root");
       if (menuRoot && !menuRoot.contains(target)) setMenuOpen(false);
     }
@@ -137,7 +132,7 @@ export default function Home() {
     setSplit(clamp(pct, 0, 100));
   }
 
-  // Pointer Events (Mouse + Touch modern)
+  // Pointer Events
   function onPointerDown(e: React.PointerEvent) {
     if (!compareRef.current) return;
     setDragging(true);
@@ -159,7 +154,7 @@ export default function Home() {
     } catch {}
   }
 
-  // Fallback Touch (für sehr alte Fälle)
+  // Touch fallback
   function onTouchStart(e: React.TouchEvent) {
     const t = e.touches[0];
     if (!t) return;
@@ -265,14 +260,7 @@ export default function Home() {
           <div style={{ opacity: 0.8 }}>
             Heute fehlt noch dein Foto 🙂 (eingestellt: {reminderTime})
           </div>
-          <div
-            style={{
-              marginTop: 10,
-              display: "flex",
-              gap: 8,
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
             <ButtonLink href="/camera">Jetzt Foto machen</ButtonLink>
             <ButtonLink href="/settings">Uhrzeit ändern</ButtonLink>
           </div>
@@ -282,233 +270,233 @@ export default function Home() {
       {/* Center-Reveal Compare (edge-to-edge) */}
       {photos.length === 0 ? (
         <Card>
-          <p style={{ margin: 0, opacity: 0.8 }}>
-            Noch kein Foto. Mach dein erstes 🙂
-          </p>
+          <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
         </Card>
       ) : (
-        <div
-          style={{
-            marginLeft: -16,
-            marginRight: -16,
-            marginTop: 14,
-          }}
-        >
+        <>
           <div
-            ref={compareRef}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={onTouchEnd}
             style={{
-              position: "relative",
-              width: "100%",
-              height: "56vh",
-              minHeight: 420,
-              background: "#000",
-              overflow: "hidden",
-              touchAction: "none", // wichtig: sonst scrollt iOS/Android statt zu draggen
-              userSelect: "none",
+              marginLeft: -16,
+              marginRight: -16,
+              marginTop: 14,
             }}
-            aria-label="Vorher/Nachher Vergleich"
           >
-            {/* Unten: Start (links) */}
-            {firstUrl && (
-              <img
-                src={firstUrl}
-                alt="Start"
-                draggable={false}
+            <div
+              ref={compareRef}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+              onTouchStart={onTouchStart}
+              onTouchMove={onTouchMove}
+              onTouchEnd={onTouchEnd}
+              style={{
+                position: "relative",
+                width: "100%",
+                height: "56vh",
+                minHeight: 420,
+                background: "#000",
+                overflow: "hidden",
+                touchAction: "none",
+                userSelect: "none",
+              }}
+              aria-label="Vorher/Nachher Vergleich"
+            >
+              {/* Unten: Start */}
+              {firstUrl && (
+                <img
+                  src={firstUrl}
+                  alt="Start"
+                  draggable={false}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: "block",
+                  }}
+                />
+              )}
+
+              {/* Oben: Heute – per Clip sichtbar */}
+              {latestUrl && (
+                <img
+                  src={latestUrl}
+                  alt="Heute"
+                  draggable={false}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: "block",
+                    clipPath: `inset(0 ${100 - split}% 0 0)`,
+                  }}
+                />
+              )}
+
+              {/* Labels */}
+              <div
                 style={{
                   position: "absolute",
-                  inset: 0,
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                  display: "block",
-                }}
-              />
-            )}
-
-            {/* Oben: Heute (rechts) – wird per Clip sichtbar */}
-            {latestUrl && (
-              <img
-                src={latestUrl}
-                alt="Heute"
-                draggable={false}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                  display: "block",
-                  // Zeigt links..split% vom "Heute"-Bild
-                  clipPath: `inset(0 ${100 - split}% 0 0)`,
-                }}
-              />
-            )}
-
-            {/* Top labels */}
-            <div
-              style={{
-                position: "absolute",
-                top: 10,
-                left: 12,
-                right: 12,
-                zIndex: 3,
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 10,
-                fontSize: 12,
-                color: "white",
-                opacity: 0.95,
-                textShadow: "0 1px 12px rgba(0,0,0,0.75)",
-              }}
-            >
-              <div
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  background: "rgba(0,0,0,0.35)",
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  backdropFilter: "blur(6px)",
-                  WebkitBackdropFilter: "blur(6px)",
-                }}
-              >
-                Start{" "}
-                {firstPhoto ? `• ${new Date(firstPhoto.date).toLocaleDateString()}` : ""}
-              </div>
-
-              <div
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  background: "rgba(0,0,0,0.35)",
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  backdropFilter: "blur(6px)",
-                  WebkitBackdropFilter: "blur(6px)",
-                }}
-              >
-                Heute{" "}
-                {latestPhoto ? `• ${new Date(latestPhoto.date).toLocaleDateString()}` : ""}
-              </div>
-            </div>
-
-            {/* Dunkler Verlauf oben für Lesbarkeit */}
-            <div
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 110,
-                zIndex: 2,
-                background:
-                  "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
-              }}
-            />
-
-            {/* Split-Line + Handle */}
-            <div
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                left: `${split}%`,
-                width: 2,
-                transform: "translateX(-1px)",
-                background: "rgba(255,255,255,0.9)",
-                zIndex: 4,
-                boxShadow: "0 0 18px rgba(0,0,0,0.55)",
-              }}
-            />
-            <div
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: `${split}%`,
-                transform: "translate(-50%, -50%)",
-                zIndex: 5,
-                width: 44,
-                height: 44,
-                borderRadius: 999,
-                background: "rgba(0,0,0,0.35)",
-                border: "1px solid rgba(255,255,255,0.22)",
-                backdropFilter: "blur(8px)",
-                WebkitBackdropFilter: "blur(8px)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "white",
-                fontSize: 18,
-                boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-              }}
-              aria-hidden="true"
-            >
-              ↔
-            </div>
-
-            {/* kleines Hint unten (optional) */}
-            <div
-              style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                bottom: 10,
-                display: "flex",
-                justifyContent: "center",
-                zIndex: 6,
-                pointerEvents: "none",
-              }}
-            >
-              <div
-                style={{
+                  top: 10,
+                  left: 12,
+                  right: 12,
+                  zIndex: 3,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
                   fontSize: 12,
-                  opacity: 0.85,
                   color: "white",
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  background: "rgba(0,0,0,0.28)",
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  backdropFilter: "blur(6px)",
-                  WebkitBackdropFilter: "blur(6px)",
-                  textShadow: "0 1px 10px rgba(0,0,0,0.6)",
+                  opacity: 0.95,
+                  textShadow: "0 1px 12px rgba(0,0,0,0.75)",
                 }}
               >
-                Zieh nach links/rechts
-              </div>
-              {/* Weiter Button */}
-<div
-  style={{
-    marginTop: 28,
-    display: "flex",
-    justifyContent: "center",
-  }}
->
-  <a
-    href="/next"
-    style={{
-      padding: "16px 36px",
-      borderRadius: 999,
-      background: "white",
-      color: "black",
-      fontWeight: 800,
-      fontSize: 16,
-      textDecoration: "none",
-      boxShadow: "0 15px 40px rgba(0,0,0,0.35)",
-      transition: "transform 0.2s ease",
-    }}
-  >
-    Weiter →
-  </a>
-</div>
+                <div
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    background: "rgba(0,0,0,0.35)",
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    backdropFilter: "blur(6px)",
+                    WebkitBackdropFilter: "blur(6px)",
+                  }}
+                >
+                  Start{" "}
+                  {firstPhoto ? `• ${new Date(firstPhoto.date).toLocaleDateString()}` : ""}
+                </div>
 
+                <div
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    background: "rgba(0,0,0,0.35)",
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    backdropFilter: "blur(6px)",
+                    WebkitBackdropFilter: "blur(6px)",
+                  }}
+                >
+                  Heute{" "}
+                  {latestPhoto ? `• ${new Date(latestPhoto.date).toLocaleDateString()}` : ""}
+                </div>
+              </div>
+
+              {/* Verlauf oben */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 110,
+                  zIndex: 2,
+                  background:
+                    "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
+                }}
+              />
+
+              {/* Split-Line */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  bottom: 0,
+                  left: `${split}%`,
+                  width: 2,
+                  transform: "translateX(-1px)",
+                  background: "rgba(255,255,255,0.9)",
+                  zIndex: 4,
+                  boxShadow: "0 0 18px rgba(0,0,0,0.55)",
+                }}
+              />
+
+              {/* Handle */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: "50%",
+                  left: `${split}%`,
+                  transform: "translate(-50%, -50%)",
+                  zIndex: 5,
+                  width: 44,
+                  height: 44,
+                  borderRadius: 999,
+                  background: "rgba(0,0,0,0.35)",
+                  border: "1px solid rgba(255,255,255,0.22)",
+                  backdropFilter: "blur(8px)",
+                  WebkitBackdropFilter: "blur(8px)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "white",
+                  fontSize: 18,
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+                }}
+                aria-hidden="true"
+              >
+                ↔
+              </div>
+
+              {/* Hint unten (nur Text) */}
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: 10,
+                  display: "flex",
+                  justifyContent: "center",
+                  zIndex: 6,
+                  pointerEvents: "none",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 12,
+                    opacity: 0.85,
+                    color: "white",
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    background: "rgba(0,0,0,0.28)",
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    backdropFilter: "blur(6px)",
+                    WebkitBackdropFilter: "blur(6px)",
+                    textShadow: "0 1px 10px rgba(0,0,0,0.6)",
+                  }}
+                >
+                  Zieh nach links/rechts
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+
+          {/* ✅ Weiter Button UNTER dem Bild (nicht im Bild) */}
+          <div
+            style={{
+              marginTop: 22,
+              display: "flex",
+              justifyContent: "center",
+            }}
+          >
+            <a
+              href="/next"
+              style={{
+                padding: "16px 36px",
+                borderRadius: 999,
+                background: "white",
+                color: "black",
+                fontWeight: 800,
+                fontSize: 16,
+                textDecoration: "none",
+                boxShadow: "0 15px 40px rgba(0,0,0,0.35)",
+              }}
+            >
+              Weiter →
+            </a>
+          </div>
+        </>
       )}
     </Container>
   );
