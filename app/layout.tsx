@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Providers } from "./providers";
-import { BottomNav } from "./components/BottomNav";
+import type { ReactNode } from "react";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,36 +25,36 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+const themeInitScript = `
+(function() {
+  try {
+    var saved = localStorage.getItem("theme"); // "light" | "dark" | "system"
+    var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var theme = saved || "system";
+    var resolved = (theme === "system") ? (prefersDark ? "dark" : "light") : theme;
+    document.documentElement.setAttribute("data-theme", resolved);
+  } catch (e) {}
+})();
+`;
+
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="de">
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta
-          name="apple-mobile-web-app-status-bar-style"
-          content="black-translucent"
-        />
-        <meta name="apple-mobile-web-app-title" content="LetsGo" />
         <meta name="theme-color" content="#000000" />
+
+        {/* iOS PWA FULLSCREEN */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="LetsGo" />
+
+        {/* Theme init BEFORE paint */}
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
 
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <Providers>
-          {/* App Background wie in deinem Figma Code */}
-          <div className="min-h-screen bg-gradient-to-br from-neutral-100 via-neutral-50 to-neutral-200 dark:from-neutral-950 dark:via-black dark:to-neutral-900 transition-colors">
-            {/* Content + Platz für BottomNav */}
-            <div className="mx-auto max-w-md px-4 pt-4 pb-28">
-              {children}
-            </div>
-          </div>
-
-          <BottomNav />
-        </Providers>
+        {children}
       </body>
     </html>
   );
