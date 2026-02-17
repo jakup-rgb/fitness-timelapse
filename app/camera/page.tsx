@@ -196,7 +196,18 @@ export default function CameraPage() {
     }
 
 
+ctx.save();
+
+if (facingMode === "user") {
+  // Spiegeln, damit gespeichertes Foto wie Vorschau aussieht
+  ctx.translate(w, 0);
+  ctx.scale(-1, 1);
+}
+
 ctx.drawImage(video, 0, 0, w, h);
+
+ctx.restore();
+
 
 
     canvas.toBlob(
@@ -461,7 +472,7 @@ ctx.drawImage(video, 0, 0, w, h);
               height: "100%",
               objectFit: "cover",
               display: "block",
-              transform:"none",
+              transform: facingMode === "user" ? "scaleX(-1)" : "none",
               pointerEvents: "none",
             }}
           />
