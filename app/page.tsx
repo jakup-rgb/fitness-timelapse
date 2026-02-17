@@ -266,51 +266,7 @@ function toggleTheme() {
                   zIndex: 50,
                 }}
               >
-                {/* ✅ Darkmode Switch */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    padding: "8px 10px",
-                    borderRadius: 12,
-                    border: "1px solid var(--border)",
-                    background: "var(--surface-2)",
-                  }}
-                >
-                  <div style={{ color: "var(--foreground)", fontWeight: 800, fontSize: 13 }}>
-                    Dark Mode
-                  </div>
-
-                  <button
-                    onClick={() => applyTheme(theme === "dark" ? "light" : "dark")}
-                    style={{
-                      width: 46,
-                      height: 26,
-                      borderRadius: 999,
-                      border: "1px solid var(--border)",
-                      background: theme === "dark" ? "white" : "var(--surface-2)",
-                      position: "relative",
-                      cursor: "pointer",
-                      padding: 0,
-                    }}
-                    aria-label="Dark Mode umschalten"
-                  >
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: 3,
-                        left: theme === "dark" ? 24 : 3,
-                        width: 20,
-                        height: 20,
-                        borderRadius: 999,
-                        background: theme === "dark" ? "black" : "white",
-                        transition: "left 0.18s ease",
-                      }}
-                    />
-                  </button>
-                </div>
+               
 
                 <ButtonLink href="/settings">Einstellungen</ButtonLink>
                 <ButtonLink href="/camera">Kamera</ButtonLink>
