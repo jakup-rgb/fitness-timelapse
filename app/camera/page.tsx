@@ -21,7 +21,7 @@ export default function CameraPage() {
 
   const [facingMode, setFacingMode] = useState<FacingMode>("user");
 
-  // ✅ Timer
+  // ✅ Manual Timer
   const [timerSeconds, setTimerSeconds] = useState<0 | 3 | 5 | 10>(0);
   const [countdown, setCountdown] = useState<number | null>(null);
   const countdownRef = useRef<number | null>(null);
@@ -31,6 +31,11 @@ export default function CameraPage() {
   const [aligned, setAligned] = useState<boolean | null>(null); // null = unknown
   const goodFramesRef = useRef(0);
   const lastShotAtRef = useRef(0);
+
+  // ✅ Auto Countdown (before auto-shot)
+  const [autoDelaySeconds, setAutoDelaySeconds] = useState<0 | 2 | 3 | 5>(3);
+  const [autoCountdown, setAutoCountdown] = useState<number | null>(null);
+  const autoCountdownRef = useRef<number | null>(null);
 
   // MediaPipe refs
   const faceDetectorRef = useRef<FaceDetector | null>(null);
@@ -103,15 +108,15 @@ export default function CameraPage() {
 
     async function initFaceDetector() {
       try {
-        // wasm root per offizieller Doku :contentReference[oaicite:2]{index=2}
         const vision = await FilesetResolver.forVisionTasks(
-           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
         );
 
-        // Model liegt in 
-        const modelPath = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite";
+        // ✅ OFFICIAL model link (.tflite)
+        const modelPath =
+          "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite";
 
-        // Versuch GPU, fallback CPU (auf manchen Geräten zickt GPU)
+        // try GPU, fallback CPU
         try {
           const fd = await FaceDetector.createFromOptions(vision, {
             baseOptions: { modelAssetPath: modelPath, delegate: "GPU" as any },
@@ -128,13 +133,9 @@ export default function CameraPage() {
           });
           if (!cancelled) faceDetectorRef.current = fd;
         }
-      } catch {
-        console.error("Face-Assist init error");
-        if (!cancelled) {
-          setError(
-            "Face-Assist konnte nicht geladen werden."
-          );
-        }
+      } catch (e) {
+        console.error("Face-Assist init error:", e);
+        if (!cancelled) setError("Face-Assist konnte nicht geladen werden.");
       }
     }
 
@@ -155,6 +156,9 @@ export default function CameraPage() {
     return () => {
       if (countdownRef.current) window.clearInterval(countdownRef.current);
       countdownRef.current = null;
+
+      if (autoCountdownRef.current) window.clearInterval(autoCountdownRef.current);
+      autoCountdownRef.current = null;
 
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -210,13 +214,18 @@ export default function CameraPage() {
   }
 
   function toggleCamera() {
-    // beim Flip: Assist resetten, damit nichts „auto“ schießt
+    // reset assist + timers so nothing auto-fires
     goodFramesRef.current = 0;
     setAligned(null);
+
+    if (autoCountdownRef.current) window.clearInterval(autoCountdownRef.current);
+    autoCountdownRef.current = null;
+    setAutoCountdown(null);
+
     setFacingMode((m) => (m === "user" ? "environment" : "user"));
   }
 
-  // ✅ Start countdown then shoot
+  // ✅ Manual countdown then shoot
   function startCountdownAndShoot(seconds: 3 | 5 | 10) {
     if (countdownRef.current) {
       window.clearInterval(countdownRef.current);
@@ -246,6 +255,35 @@ export default function CameraPage() {
     }, 1000);
   }
 
+  // ✅ Auto countdown then shoot (for face assist)
+  function startAutoCountdownAndShoot(seconds: 2 | 3 | 5) {
+    if (autoCountdownRef.current) {
+      window.clearInterval(autoCountdownRef.current);
+      autoCountdownRef.current = null;
+    }
+
+    setAutoCountdown(seconds);
+
+    autoCountdownRef.current = window.setInterval(() => {
+      setAutoCountdown((c) => {
+        if (c === null) return null;
+
+        if (c <= 1) {
+          if (autoCountdownRef.current) window.clearInterval(autoCountdownRef.current);
+          autoCountdownRef.current = null;
+
+          setTimeout(() => {
+            setAutoCountdown(null);
+            takePhoto();
+          }, 0);
+
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+  }
+
   // ✅ Face assist loop (throttled)
   useEffect(() => {
     if (!autoMode) {
@@ -253,6 +291,11 @@ export default function CameraPage() {
       rafRef.current = null;
       goodFramesRef.current = 0;
       setAligned(null);
+
+      if (autoCountdownRef.current) window.clearInterval(autoCountdownRef.current);
+      autoCountdownRef.current = null;
+      setAutoCountdown(null);
+
       return;
     }
 
@@ -268,20 +311,19 @@ export default function CameraPage() {
       const vw = video.videoWidth;
       const vh = video.videoHeight;
 
-      // Video muss ready sein
-      if (!vw || !vh || starting || saving || countdown !== null) {
+      // must be ready; also pause detection while countdowns run
+      if (!vw || !vh || starting || saving || countdown !== null || autoCountdown !== null) {
         rafRef.current = requestAnimationFrame(loop);
         return;
       }
 
-      // nur wenn ein neuer Frame da ist
+      // only new frames
       if (video.currentTime === lastVideoTimeRef.current) {
         rafRef.current = requestAnimationFrame(loop);
         return;
       }
       lastVideoTimeRef.current = video.currentTime;
 
-      // Wrapper Größe (die „sichtbare“ Fläche)
       const wrapper = video.parentElement as HTMLDivElement | null;
       if (!wrapper) {
         rafRef.current = requestAnimationFrame(loop);
@@ -298,41 +340,33 @@ export default function CameraPage() {
       const offsetX = (W - dispW) / 2;
       const offsetY = (H - dispH) / 2;
 
-      // Kopf-Kreis (wie in deinem Overlay)
+      // Head circle (same as overlay)
       const circleCx = W / 2;
-      const circleCy = 60 + 45; // top 60, size 90 => center
+      const circleCy = 60 + 45;
       const circleR = 45;
 
-      // detect
       let ok = false;
 
       try {
         const res = fd.detectForVideo(video, performance.now());
-
         const det = res?.detections?.[0];
         const bb = det?.boundingBox;
 
         if (bb) {
-          // Face center in VIDEO pixels
           const fx = bb.originX + bb.width / 2;
           const fy = bb.originY + bb.height / 2;
 
-          // Map to WRAPPER pixels
           let x = fx * scale + offsetX;
           const y = fy * scale + offsetY;
 
-          // Frontkamera ist visuell gespiegelt → X spiegeln, damit Feedback „wie gesehen“ passt
+          // mirror x for user-facing (so feedback matches what you see)
           if (facingMode === "user") x = W - x;
 
-          // Face size in wrapper px (für Abstand/Zoom)
           const faceW = bb.width * scale;
 
-          // Regeln (absichtlich simpel & stabil):
-          // - Center muss im Kreis sein (mit etwas Toleranz)
-          // - Gesicht muss ungefähr zur Kreisgröße passen
           const dist = Math.hypot(x - circleCx, y - circleCy);
-          const centerOK = dist <= circleR * 0.85;
-          const sizeOK = faceW >= circleR * 1.2 && faceW <= circleR * 2.4;
+          const centerOK = dist <= circleR * 0.8; // slightly stricter
+          const sizeOK = faceW >= circleR * 1.25 && faceW <= circleR * 2.3;
 
           ok = centerOK && sizeOK;
         }
@@ -342,24 +376,24 @@ export default function CameraPage() {
 
       setAligned(ok);
 
-      // Stabilitätslogik: nur wenn mehrere Frames „ok“ hintereinander
       if (ok) goodFramesRef.current += 1;
       else goodFramesRef.current = 0;
 
-      // Auto-shot: z.B. ~10 gute Frames hintereinander + cooldown
       const now = Date.now();
-      const cooldownMs = 2500;
+      const cooldownMs = 3000;
 
-      if (
-        goodFramesRef.current >= 10 &&
-        now - lastShotAtRef.current > cooldownMs &&
-        !saving &&
-        !starting &&
-        countdown === null
-      ) {
+      const stableEnough = goodFramesRef.current >= 12;
+      const cooldownOk = now - lastShotAtRef.current > cooldownMs;
+
+      if (stableEnough && cooldownOk && !saving && !starting && countdown === null && autoCountdown === null) {
         lastShotAtRef.current = now;
         goodFramesRef.current = 0;
-        takePhoto();
+
+        if (autoDelaySeconds === 0) {
+          takePhoto();
+        } else {
+          startAutoCountdownAndShoot(autoDelaySeconds);
+        }
       }
 
       rafRef.current = requestAnimationFrame(loop);
@@ -370,15 +404,22 @@ export default function CameraPage() {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     };
-  }, [autoMode, facingMode, saving, starting, countdown]);
+  }, [autoMode, facingMode, saving, starting, countdown, autoCountdown, autoDelaySeconds]);
 
-  // Head-circle border color based on align state (nur im Auto-Modus sichtbar)
+  // ✅ Stronger visual feedback for head circle
   const headBorder =
     autoMode && aligned !== null
       ? aligned
-        ? "rgba(34,197,94,0.95)" // grün
-        : "rgba(239,68,68,0.95)" // rot
+        ? "rgba(0,255,120,0.95)"
+        : "rgba(255,70,70,0.95)"
       : "var(--calendar-today-border)";
+
+  const headGlow =
+    autoMode && aligned !== null
+      ? aligned
+        ? "0 0 0 4px rgba(0,255,120,0.25), 0 0 18px rgba(0,255,120,0.55)"
+        : "0 0 0 4px rgba(255,70,70,0.18), 0 0 16px rgba(255,70,70,0.45)"
+      : "none";
 
   return (
     <Container>
@@ -426,7 +467,7 @@ export default function CameraPage() {
           {/* Kamera wechseln */}
           <button
             onClick={toggleCamera}
-            disabled={saving || starting || countdown !== null}
+            disabled={saving || starting || countdown !== null || autoCountdown !== null}
             style={{
               position: "absolute",
               top: 12,
@@ -437,9 +478,9 @@ export default function CameraPage() {
               border: "1px solid var(--border)",
               background: "rgba(0,0,0,0.45)",
               color: "var(--foreground)",
-              cursor: saving || starting || countdown !== null ? "not-allowed" : "pointer",
+              cursor: saving || starting || countdown !== null || autoCountdown !== null ? "not-allowed" : "pointer",
               fontSize: 14,
-              opacity: saving || starting || countdown !== null ? 0.6 : 1,
+              opacity: saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
               backdropFilter: "blur(6px)",
               WebkitBackdropFilter: "blur(6px)",
             }}
@@ -455,7 +496,7 @@ export default function CameraPage() {
               position: "absolute",
               inset: 0,
               pointerEvents: "none",
-              opacity: 0.55,
+              opacity: autoMode ? 0.75 : 0.55,
             }}
           >
             {/* Rahmen */}
@@ -481,7 +522,7 @@ export default function CameraPage() {
               }}
             />
 
-            {/* Head-Kreis (hier färben wir rot/grün im Auto-Modus) */}
+            {/* Head-Kreis */}
             <div
               style={{
                 position: "absolute",
@@ -491,7 +532,9 @@ export default function CameraPage() {
                 height: 90,
                 transform: "translateX(-50%)",
                 borderRadius: "50%",
-                border: `2px solid ${headBorder}`,
+                border: `3px solid ${headBorder}`,
+                boxShadow: headGlow,
+                opacity: autoMode ? 0.95 : 0.55,
               }}
             />
 
@@ -526,7 +569,7 @@ export default function CameraPage() {
             </div>
           )}
 
-          {/* Countdown Overlay */}
+          {/* Manual Countdown Overlay */}
           {countdown !== null && countdown > 0 && (
             <div
               style={{
@@ -547,17 +590,43 @@ export default function CameraPage() {
               {countdown}
             </div>
           )}
+
+          {/* Auto Countdown Overlay */}
+          {autoCountdown !== null && autoCountdown > 0 && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "rgba(0,0,0,0.35)",
+                color: "rgba(255,255,255,0.95)",
+                fontSize: 64,
+                fontWeight: 700,
+                zIndex: 31,
+                backdropFilter: "blur(2px)",
+                WebkitBackdropFilter: "blur(2px)",
+              }}
+            >
+              {autoCountdown}
+            </div>
+          )}
         </div>
 
-        {/* ✅ Auto Mode Button */}
+        {/* Auto Mode Button */}
         <button
           onClick={() => {
-            // reset
             goodFramesRef.current = 0;
             setAligned(null);
+
+            if (autoCountdownRef.current) window.clearInterval(autoCountdownRef.current);
+            autoCountdownRef.current = null;
+            setAutoCountdown(null);
+
             setAutoMode((v) => !v);
           }}
-          disabled={saving || starting || countdown !== null}
+          disabled={saving || starting || countdown !== null || autoCountdown !== null}
           style={{
             marginTop: 12,
             width: "100%",
@@ -565,20 +634,20 @@ export default function CameraPage() {
             borderRadius: 12,
             border: "1px solid var(--border)",
             background: "transparent",
-            cursor: saving || starting || countdown !== null ? "not-allowed" : "pointer",
+            cursor: saving || starting || countdown !== null || autoCountdown !== null ? "not-allowed" : "pointer",
             fontSize: 16,
-            opacity: saving || starting || countdown !== null ? 0.6 : 1,
+            opacity: saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
           }}
         >
           🎯 Auto: {autoMode ? "An" : "Aus"}
         </button>
 
-        {/* Timer Button */}
+        {/* Auto Countdown Selector */}
         <button
           onClick={() => {
-            setTimerSeconds((t) => (t === 0 ? 3 : t === 3 ? 5 : t === 5 ? 10 : 0));
+            setAutoDelaySeconds((s) => (s === 0 ? 2 : s === 2 ? 3 : s === 3 ? 5 : 0));
           }}
-          disabled={saving || starting || countdown !== null || autoMode}
+          disabled={saving || starting || countdown !== null || autoCountdown !== null || !autoMode}
           style={{
             marginTop: 12,
             width: "100%",
@@ -586,9 +655,37 @@ export default function CameraPage() {
             borderRadius: 12,
             border: "1px solid var(--border)",
             background: "transparent",
-            cursor: saving || starting || countdown !== null || autoMode ? "not-allowed" : "pointer",
+            cursor:
+              saving || starting || countdown !== null || autoCountdown !== null || !autoMode
+                ? "not-allowed"
+                : "pointer",
             fontSize: 16,
-            opacity: saving || starting || countdown !== null || autoMode ? 0.6 : 1,
+            opacity: saving || starting || countdown !== null || autoCountdown !== null || !autoMode ? 0.6 : 1,
+          }}
+        >
+          ⏳ Auto-Countdown: {autoDelaySeconds === 0 ? "Aus" : `${autoDelaySeconds}s`}
+          {!autoMode ? " (Auto aus)" : ""}
+        </button>
+
+        {/* Manual Timer Button */}
+        <button
+          onClick={() => {
+            setTimerSeconds((t) => (t === 0 ? 3 : t === 3 ? 5 : t === 5 ? 10 : 0));
+          }}
+          disabled={saving || starting || countdown !== null || autoCountdown !== null || autoMode}
+          style={{
+            marginTop: 12,
+            width: "100%",
+            padding: "12px",
+            borderRadius: 12,
+            border: "1px solid var(--border)",
+            background: "transparent",
+            cursor:
+              saving || starting || countdown !== null || autoCountdown !== null || autoMode
+                ? "not-allowed"
+                : "pointer",
+            fontSize: 16,
+            opacity: saving || starting || countdown !== null || autoCountdown !== null || autoMode ? 0.6 : 1,
           }}
         >
           ⏱ Timer: {timerSeconds === 0 ? "Aus" : `${timerSeconds}s`}
@@ -599,14 +696,12 @@ export default function CameraPage() {
         <button
           onClick={() => {
             if (saving || starting) return;
-            if (countdown !== null) return;
+            if (countdown !== null || autoCountdown !== null) return;
 
-            // Wenn Auto-Mode an ist, soll man trotzdem manuell auslösen können:
-            // (wenn du das NICHT willst, sag’s — dann block ich es)
             if (timerSeconds === 0) takePhoto();
             else startCountdownAndShoot(timerSeconds);
           }}
-          disabled={saving || starting || countdown !== null}
+          disabled={saving || starting || countdown !== null || autoCountdown !== null}
           style={{
             marginTop: 12,
             width: "100%",
@@ -614,12 +709,18 @@ export default function CameraPage() {
             borderRadius: 12,
             border: "1px solid var(--border)",
             background: "transparent",
-            cursor: saving || starting || countdown !== null ? "not-allowed" : "pointer",
+            cursor: saving || starting || countdown !== null || autoCountdown !== null ? "not-allowed" : "pointer",
             fontSize: 16,
-            opacity: saving || starting || countdown !== null ? 0.6 : 1,
+            opacity: saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
           }}
         >
-          {saving ? "Speichere..." : countdown !== null ? `Foto in ${countdown}...` : "Foto machen"}
+          {saving
+            ? "Speichere..."
+            : countdown !== null
+              ? `Foto in ${countdown}...`
+              : autoCountdown !== null
+                ? `Auto-Foto in ${autoCountdown}...`
+                : "Foto machen"}
         </button>
 
         <canvas ref={canvasRef} style={{ display: "none" }} />
