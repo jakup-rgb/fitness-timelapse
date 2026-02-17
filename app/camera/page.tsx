@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { Container, Topbar, ButtonLink, Card } from "../ui";
 import { addPhoto } from "../lib/db";
 
+// ✅ MediaPipe
+import { FaceDetector, FilesetResolver } from "@mediapipe/tasks-vision";
+
 type FacingMode = "user" | "environment";
 
 export default function CameraPage() {
@@ -23,17 +26,24 @@ export default function CameraPage() {
   const [countdown, setCountdown] = useState<number | null>(null);
   const countdownRef = useRef<number | null>(null);
 
+  // ✅ Auto Align / Face assist
+  const [autoMode, setAutoMode] = useState(false);
+  const [aligned, setAligned] = useState<boolean | null>(null); // null = unknown
+  const goodFramesRef = useRef(0);
+  const lastShotAtRef = useRef(0);
+
+  // MediaPipe refs
+  const faceDetectorRef = useRef<FaceDetector | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const lastVideoTimeRef = useRef<number>(-1);
+
   // Double-tap to flip camera (mobile)
   const lastTapRef = useRef<number>(0);
 
   function handleTapToFlip() {
     const now = Date.now();
     const delta = now - lastTapRef.current;
-
-    // double-tap within ~320ms
-    if (delta > 0 && delta < 320) {
-      toggleCamera();
-    }
+    if (delta > 0 && delta < 320) toggleCamera();
     lastTapRef.current = now;
   }
 
@@ -54,23 +64,19 @@ export default function CameraPage() {
       stopStream();
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: mode }, // "user" (front) oder "environment" (back)
-        },
+        video: { facingMode: { ideal: mode } },
         audio: false,
       });
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        // iOS Safari braucht manchmal play() nach srcObject setzen
         await videoRef.current.play().catch(() => {});
       }
     } catch {
-      // Fallback: wenn "environment" nicht geht, probier "user"
       if (mode === "environment") {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: "user" } }, // ✅ fallback auf Frontkamera
+            video: { facingMode: { ideal: "user" } },
             audio: false,
           });
 
@@ -82,9 +88,7 @@ export default function CameraPage() {
           setFacingMode("user");
           setError("Rückkamera nicht verfügbar – auf Frontkamera gewechselt.");
           return;
-        } catch {
-          // weiter unten Fehler setzen
-        }
+        } catch {}
       }
 
       setError("Kamera konnte nicht gestartet werden. Bitte Berechtigung prüfen.");
@@ -93,13 +97,66 @@ export default function CameraPage() {
     }
   }
 
+  // ✅ MediaPipe init (einmal)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function initFaceDetector() {
+      try {
+        // wasm root per offizieller Doku :contentReference[oaicite:2]{index=2}
+        const vision = await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+        );
+
+        // Model liegt in /public/models/face_detector.task
+        const modelPath = "/models/face_detector.task";
+
+        // Versuch GPU, fallback CPU (auf manchen Geräten zickt GPU)
+        try {
+          const fd = await FaceDetector.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: modelPath, delegate: "GPU" as any },
+            runningMode: "VIDEO",
+            minDetectionConfidence: 0.6,
+          });
+          if (!cancelled) faceDetectorRef.current = fd;
+          return;
+        } catch {
+          const fd = await FaceDetector.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: modelPath, delegate: "CPU" as any },
+            runningMode: "VIDEO",
+            minDetectionConfidence: 0.6,
+          });
+          if (!cancelled) faceDetectorRef.current = fd;
+        }
+      } catch {
+        if (!cancelled) {
+          setError(
+            "Face-Assist konnte nicht geladen werden. Prüfe ob /public/models/face_detector.task vorhanden ist."
+          );
+        }
+      }
+    }
+
+    initFaceDetector();
+
+    return () => {
+      cancelled = true;
+      try {
+        faceDetectorRef.current?.close();
+      } catch {}
+      faceDetectorRef.current = null;
+    };
+  }, []);
+
   useEffect(() => {
     startCamera(facingMode);
 
     return () => {
-      // ✅ Countdown cleanup
       if (countdownRef.current) window.clearInterval(countdownRef.current);
       countdownRef.current = null;
+
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
 
       stopStream();
     };
@@ -152,12 +209,14 @@ export default function CameraPage() {
   }
 
   function toggleCamera() {
+    // beim Flip: Assist resetten, damit nichts „auto“ schießt
+    goodFramesRef.current = 0;
+    setAligned(null);
     setFacingMode((m) => (m === "user" ? "environment" : "user"));
   }
 
   // ✅ Start countdown then shoot
   function startCountdownAndShoot(seconds: 3 | 5 | 10) {
-    // falls schon läuft → abbrechen
     if (countdownRef.current) {
       window.clearInterval(countdownRef.current);
       countdownRef.current = null;
@@ -174,7 +233,6 @@ export default function CameraPage() {
           if (countdownRef.current) window.clearInterval(countdownRef.current);
           countdownRef.current = null;
 
-          // Countdown weg, dann Foto
           setTimeout(() => {
             setCountdown(null);
             takePhoto();
@@ -187,6 +245,140 @@ export default function CameraPage() {
     }, 1000);
   }
 
+  // ✅ Face assist loop (throttled)
+  useEffect(() => {
+    if (!autoMode) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      goodFramesRef.current = 0;
+      setAligned(null);
+      return;
+    }
+
+    function loop() {
+      const video = videoRef.current;
+      const fd = faceDetectorRef.current;
+
+      if (!video || !fd) {
+        rafRef.current = requestAnimationFrame(loop);
+        return;
+      }
+
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+
+      // Video muss ready sein
+      if (!vw || !vh || starting || saving || countdown !== null) {
+        rafRef.current = requestAnimationFrame(loop);
+        return;
+      }
+
+      // nur wenn ein neuer Frame da ist
+      if (video.currentTime === lastVideoTimeRef.current) {
+        rafRef.current = requestAnimationFrame(loop);
+        return;
+      }
+      lastVideoTimeRef.current = video.currentTime;
+
+      // Wrapper Größe (die „sichtbare“ Fläche)
+      const wrapper = video.parentElement as HTMLDivElement | null;
+      if (!wrapper) {
+        rafRef.current = requestAnimationFrame(loop);
+        return;
+      }
+      const rect = wrapper.getBoundingClientRect();
+      const W = rect.width;
+      const H = rect.height;
+
+      // objectFit: cover mapping
+      const scale = Math.max(W / vw, H / vh);
+      const dispW = vw * scale;
+      const dispH = vh * scale;
+      const offsetX = (W - dispW) / 2;
+      const offsetY = (H - dispH) / 2;
+
+      // Kopf-Kreis (wie in deinem Overlay)
+      const circleCx = W / 2;
+      const circleCy = 60 + 45; // top 60, size 90 => center
+      const circleR = 45;
+
+      // detect
+      let ok = false;
+
+      try {
+        const res = fd.detectForVideo(video, performance.now());
+
+        const det = res?.detections?.[0];
+        const bb = det?.boundingBox;
+
+        if (bb) {
+          // Face center in VIDEO pixels
+          const fx = bb.originX + bb.width / 2;
+          const fy = bb.originY + bb.height / 2;
+
+          // Map to WRAPPER pixels
+          let x = fx * scale + offsetX;
+          const y = fy * scale + offsetY;
+
+          // Frontkamera ist visuell gespiegelt → X spiegeln, damit Feedback „wie gesehen“ passt
+          if (facingMode === "user") x = W - x;
+
+          // Face size in wrapper px (für Abstand/Zoom)
+          const faceW = bb.width * scale;
+
+          // Regeln (absichtlich simpel & stabil):
+          // - Center muss im Kreis sein (mit etwas Toleranz)
+          // - Gesicht muss ungefähr zur Kreisgröße passen
+          const dist = Math.hypot(x - circleCx, y - circleCy);
+          const centerOK = dist <= circleR * 0.85;
+          const sizeOK = faceW >= circleR * 1.2 && faceW <= circleR * 2.4;
+
+          ok = centerOK && sizeOK;
+        }
+      } catch {
+        ok = false;
+      }
+
+      setAligned(ok);
+
+      // Stabilitätslogik: nur wenn mehrere Frames „ok“ hintereinander
+      if (ok) goodFramesRef.current += 1;
+      else goodFramesRef.current = 0;
+
+      // Auto-shot: z.B. ~10 gute Frames hintereinander + cooldown
+      const now = Date.now();
+      const cooldownMs = 2500;
+
+      if (
+        goodFramesRef.current >= 10 &&
+        now - lastShotAtRef.current > cooldownMs &&
+        !saving &&
+        !starting &&
+        countdown === null
+      ) {
+        lastShotAtRef.current = now;
+        goodFramesRef.current = 0;
+        takePhoto();
+      }
+
+      rafRef.current = requestAnimationFrame(loop);
+    }
+
+    rafRef.current = requestAnimationFrame(loop);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    };
+  }, [autoMode, facingMode, saving, starting, countdown]);
+
+  // Head-circle border color based on align state (nur im Auto-Modus sichtbar)
+  const headBorder =
+    autoMode && aligned !== null
+      ? aligned
+        ? "rgba(34,197,94,0.95)" // grün
+        : "rgba(239,68,68,0.95)" // rot
+      : "var(--calendar-today-border)";
+
   return (
     <Container>
       <Topbar title="Kamera" right={<ButtonLink href="/next">Zurück</ButtonLink>} />
@@ -198,10 +390,9 @@ export default function CameraPage() {
         <div
           onTouchEnd={handleTapToFlip}
           onClick={(e) => {
-            // iOS fires "click" events after taps; detail===2 catches double-tap as well
             if ((e as any).detail === 2) toggleCamera();
           }}
-          onDoubleClick={toggleCamera} // desktop
+          onDoubleClick={toggleCamera}
           style={{
             marginTop: error ? 10 : 0,
             position: "relative",
@@ -211,8 +402,6 @@ export default function CameraPage() {
             overflow: "hidden",
             background: "#000",
             opacity: starting ? 0.7 : 1,
-
-            // helps mobile: avoid double-tap zoom & make taps reliable
             touchAction: "manipulation",
             WebkitTapHighlightColor: "transparent",
             userSelect: "none",
@@ -228,14 +417,12 @@ export default function CameraPage() {
               height: "100%",
               objectFit: "cover",
               display: "block",
-              // Frontkamera fühlt sich natürlicher an (Spiegel).
               transform: facingMode === "user" ? "scaleX(-1)" : "none",
-              // wichtig: damit der Wrapper die taps bekommt (iOS frisst sonst oft events am video)
               pointerEvents: "none",
             }}
           />
 
-          {/* ✅ Kamera-Wechsel Button als Overlay (immer sichtbar auf Handy) */}
+          {/* Kamera wechseln */}
           <button
             onClick={toggleCamera}
             disabled={saving || starting || countdown !== null}
@@ -293,7 +480,7 @@ export default function CameraPage() {
               }}
             />
 
-            {/* Head-Kreis */}
+            {/* Head-Kreis (hier färben wir rot/grün im Auto-Modus) */}
             <div
               style={{
                 position: "absolute",
@@ -303,7 +490,7 @@ export default function CameraPage() {
                 height: 90,
                 transform: "translateX(-50%)",
                 borderRadius: "50%",
-                border: "2px solid var(--calendar-today-border)",
+                border: `2px solid ${headBorder}`,
               }}
             />
 
@@ -338,7 +525,7 @@ export default function CameraPage() {
             </div>
           )}
 
-          {/* ✅ Countdown Overlay */}
+          {/* Countdown Overlay */}
           {countdown !== null && countdown > 0 && (
             <div
               style={{
@@ -361,10 +548,13 @@ export default function CameraPage() {
           )}
         </div>
 
-        {/* ✅ Timer Button */}
+        {/* ✅ Auto Mode Button */}
         <button
           onClick={() => {
-            setTimerSeconds((t) => (t === 0 ? 3 : t === 3 ? 5 : t === 5 ? 10 : 0));
+            // reset
+            goodFramesRef.current = 0;
+            setAligned(null);
+            setAutoMode((v) => !v);
           }}
           disabled={saving || starting || countdown !== null}
           style={{
@@ -379,7 +569,29 @@ export default function CameraPage() {
             opacity: saving || starting || countdown !== null ? 0.6 : 1,
           }}
         >
+          🎯 Auto: {autoMode ? "An" : "Aus"}
+        </button>
+
+        {/* Timer Button */}
+        <button
+          onClick={() => {
+            setTimerSeconds((t) => (t === 0 ? 3 : t === 3 ? 5 : t === 5 ? 10 : 0));
+          }}
+          disabled={saving || starting || countdown !== null || autoMode}
+          style={{
+            marginTop: 12,
+            width: "100%",
+            padding: "12px",
+            borderRadius: 12,
+            border: "1px solid var(--border)",
+            background: "transparent",
+            cursor: saving || starting || countdown !== null || autoMode ? "not-allowed" : "pointer",
+            fontSize: 16,
+            opacity: saving || starting || countdown !== null || autoMode ? 0.6 : 1,
+          }}
+        >
           ⏱ Timer: {timerSeconds === 0 ? "Aus" : `${timerSeconds}s`}
+          {autoMode ? " (deaktiviert)" : ""}
         </button>
 
         {/* Foto-Button */}
@@ -387,6 +599,9 @@ export default function CameraPage() {
           onClick={() => {
             if (saving || starting) return;
             if (countdown !== null) return;
+
+            // Wenn Auto-Mode an ist, soll man trotzdem manuell auslösen können:
+            // (wenn du das NICHT willst, sag’s — dann block ich es)
             if (timerSeconds === 0) takePhoto();
             else startCountdownAndShoot(timerSeconds);
           }}
@@ -406,7 +621,6 @@ export default function CameraPage() {
           {saving ? "Speichere..." : countdown !== null ? `Foto in ${countdown}...` : "Foto machen"}
         </button>
 
-        {/* verstecktes Canvas für den Snapshot */}
         <canvas ref={canvasRef} style={{ display: "none" }} />
       </Card>
     </Container>
