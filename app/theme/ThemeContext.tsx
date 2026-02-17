@@ -19,17 +19,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (saved) setTheme(saved);
   }, []);
 
-useEffect(() => {
-  const root = document.documentElement;
+  useEffect(() => {
+    const root = document.documentElement;
 
-  // falls du data-theme nutzt: beibehalten
-  root.setAttribute("data-theme", theme);
+    // für deine CSS Variablen
+    root.setAttribute("data-theme", theme);
 
-  // WICHTIG: Tailwind dark: braucht die class "dark"
-  if (theme === "dark") root.classList.add("dark");
-  else root.classList.remove("dark");
-}, [theme]);
+    // für Tailwind dark:
+    if (theme === "dark") root.classList.add("dark");
+    else root.classList.remove("dark");
 
+    // 🔥 fehlt noch: persistieren
+    localStorage.setItem("letsgo-theme", theme);
+  }, [theme]);
 
   const toggleTheme = () => setTheme((p) => (p === "light" ? "dark" : "light"));
 
