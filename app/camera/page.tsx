@@ -362,7 +362,7 @@ ctx.drawImage(video, 0, 0, w, h);
           const y = fy * scale + offsetY;
 
           // mirror x for user-facing (so feedback matches what you see)
-          if (facingMode === "user") x = W - x;
+          // if (facingMode === "user") x = W - x;
 
           const faceW = bb.width * scale;
 
