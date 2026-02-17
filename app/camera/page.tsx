@@ -195,7 +195,19 @@ export default function CameraPage() {
       return;
     }
 
-    ctx.drawImage(video, 0, 0, w, h);
+    if (facingMode === "user") {
+  // Selfie horizontal spiegeln
+  ctx.translate(w, 0);
+  ctx.scale(-1, 1);
+}
+
+ctx.drawImage(video, 0, 0, w, h);
+
+if (facingMode === "user") {
+  // Reset Transform (wichtig für Sicherheit)
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
 
     canvas.toBlob(
       async (blob) => {
