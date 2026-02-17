@@ -43,6 +43,8 @@ export default function Home() {
 
   const [firstUrl, setFirstUrl] = useState<string | null>(null);
   const [latestUrl, setLatestUrl] = useState<string | null>(null);
+  const [themeDark, setThemeDark] = useState(false);
+
 
   const latestPhoto = useMemo(
     () => (photos.length > 0 ? photos[0] : null),
@@ -89,6 +91,19 @@ export default function Home() {
     const rt = localStorage.getItem("reminder_time");
     setReminderTime(rt);
   }, []);
+
+  useEffect(() => {
+  // initial state aus <html class="dark"> lesen
+  setThemeDark(document.documentElement.classList.contains("dark"));
+}, []);
+
+function toggleTheme() {
+  const next = !document.documentElement.classList.contains("dark");
+  document.documentElement.classList.toggle("dark", next);
+  localStorage.setItem("theme", next ? "dark" : "light");
+  setThemeDark(next);
+}
+
 
   // ✅ Theme beim Start laden
   useEffect(() => {
@@ -548,6 +563,49 @@ export default function Home() {
               >
                 Zieh nach links/rechts
               </div>
+              <div
+  style={{
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    padding: "8px 10px",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.06)",
+    color: "white",
+  }}
+>
+  <div style={{ fontWeight: 700, fontSize: 13 }}>Dark Mode</div>
+
+  <button
+    onClick={toggleTheme}
+    style={{
+      width: 44,
+      height: 26,
+      borderRadius: 999,
+      border: "1px solid rgba(255,255,255,0.18)",
+      background: themeDark ? "white" : "rgba(255,255,255,0.18)",
+      position: "relative",
+      cursor: "pointer",
+    }}
+    aria-label="Dark Mode umschalten"
+  >
+    <span
+      style={{
+        position: "absolute",
+        top: 2,
+        left: themeDark ? 22 : 2,
+        width: 20,
+        height: 20,
+        borderRadius: 999,
+        background: themeDark ? "black" : "white",
+        transition: "left 0.15s ease",
+      }}
+    />
+  </button>
+</div>
+
             </div>
           </div>
         </div>
