@@ -51,6 +51,9 @@ export default function Home() {
     [photos]
   );
 
+  // ✅ Darkmode
+  const [isDark, setIsDark] = useState(false);
+
   // Center-reveal split (0..100). Start: 50% (beide Hälften sichtbar)
   const [split, setSplit] = useState(50);
   const [dragging, setDragging] = useState(false);
@@ -75,34 +78,58 @@ export default function Home() {
     setReminderTime(rt);
   }, []);
 
+  // ✅ Theme initial laden (localStorage -> sonst system)
   useEffect(() => {
-  if (!reminderTime) return;
-  if (Notification.permission !== "granted") return;
+    const saved = localStorage.getItem("theme");
+    const systemPrefersDark =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
 
-  const interval = setInterval(async () => {
-    const now = new Date();
-    const currentTime =
-      String(now.getHours()).padStart(2, "0") +
-      ":" +
-      String(now.getMinutes()).padStart(2, "0");
+    const nextDark = saved ? saved === "dark" : systemPrefersDark;
 
-    if (currentTime !== reminderTime) return;
+    setIsDark(nextDark);
+    if (nextDark) document.documentElement.classList.add("dark");
+    else document.documentElement.classList.remove("dark");
+  }, []);
 
-    const today = dayKey(new Date());
-    const hasPhoto = photos.some(
-      (p) => dayKey(new Date(p.date)) === today
-    );
-
-    if (!hasPhoto) {
-      new Notification("LetsGo 🔥", {
-        body: "Du hast heute noch kein Progress-Foto gemacht!",
-      });
+  // ✅ Theme anwenden + speichern wenn toggled
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
     }
-  }, 60000); // jede Minute prüfen
+  }, [isDark]);
 
-  return () => clearInterval(interval);
-}, [reminderTime, photos]);
+  // (Dein Notification-Reminder Code bleibt wie er ist)
+  useEffect(() => {
+    if (!reminderTime) return;
+    if (Notification.permission !== "granted") return;
 
+    const interval = setInterval(async () => {
+      const now = new Date();
+      const currentTime =
+        String(now.getHours()).padStart(2, "0") +
+        ":" +
+        String(now.getMinutes()).padStart(2, "0");
+
+      if (currentTime !== reminderTime) return;
+
+      const today = dayKey(new Date());
+      const hasPhoto = photos.some((p) => dayKey(new Date(p.date)) === today);
+
+      if (!hasPhoto) {
+        new Notification("LetsGo 🔥", {
+          body: "Du hast heute noch kein Progress-Foto gemacht!",
+        });
+      }
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [reminderTime, photos]);
 
   // check: heute foto?
   useEffect(() => {
@@ -117,7 +144,8 @@ export default function Home() {
       if (document.visibilityState === "visible") refresh();
     }
     document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -235,16 +263,71 @@ export default function Home() {
                   position: "absolute",
                   right: 0,
                   top: "calc(100% + 8px)",
-                  minWidth: 180,
-                  borderRadius: 12,
+                  minWidth: 200,
+                  borderRadius: 14,
                   border: "1px solid rgba(0,0,0,0.15)",
                   background: "rgba(20,20,20,0.95)",
                   padding: 10,
                   display: "grid",
-                  gap: 8,
+                  gap: 10,
                   zIndex: 50,
                 }}
               >
+                {/* ✅ Dark Mode Toggle */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    padding: "8px 10px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "rgba(255,255,255,0.06)",
+                    color: "white",
+                  }}
+                >
+                  <div style={{ fontWeight: 800, fontSize: 13 }}>
+                    Dark Mode
+                  </div>
+
+                  <button
+                    onClick={() => setIsDark((v) => !v)}
+                    style={{
+                      width: 52,
+                      height: 30,
+                      borderRadius: 999,
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      background: isDark ? "white" : "rgba(255,255,255,0.15)",
+                      cursor: "pointer",
+                      position: "relative",
+                      padding: 0,
+                    }}
+                    aria-label="Dark Mode umschalten"
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: 3,
+                        left: isDark ? 26 : 3,
+                        width: 24,
+                        height: 24,
+                        borderRadius: 999,
+                        background: isDark ? "black" : "white",
+                        transition: "left 0.18s ease",
+                      }}
+                    />
+                  </button>
+                </div>
+
+                <div
+                  style={{
+                    height: 1,
+                    background: "rgba(255,255,255,0.10)",
+                    margin: "2px 0",
+                  }}
+                />
+
                 <ButtonLink href="/settings">Einstellungen</ButtonLink>
                 <ButtonLink href="/camera">Kamera</ButtonLink>
                 <ButtonLink href="/add">Upload</ButtonLink>
@@ -302,206 +385,196 @@ export default function Home() {
           <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
         </Card>
       ) : (
-        <>
+        <div style={{ marginLeft: -16, marginRight: -16, marginTop: 14 }}>
           <div
+            ref={compareRef}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
             style={{
-              marginLeft: -16,
-              marginRight: -16,
-              marginTop: 14,
+              position: "relative",
+              width: "100%",
+              height: "56vh",
+              minHeight: 420,
+              background: "#000",
+              overflow: "hidden",
+              touchAction: "none",
+              userSelect: "none",
             }}
+            aria-label="Vorher/Nachher Vergleich"
           >
+            {/* Unten: Start */}
+            {firstUrl && (
+              <img
+                src={firstUrl}
+                alt="Start"
+                draggable={false}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                }}
+              />
+            )}
+
+            {/* Oben: Heute – per Clip sichtbar */}
+            {latestUrl && (
+              <img
+                src={latestUrl}
+                alt="Heute"
+                draggable={false}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                  clipPath: `inset(0 ${100 - split}% 0 0)`,
+                }}
+              />
+            )}
+
+            {/* Labels */}
             <div
-              ref={compareRef}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerCancel={onPointerUp}
-              onTouchStart={onTouchStart}
-              onTouchMove={onTouchMove}
-              onTouchEnd={onTouchEnd}
               style={{
-                position: "relative",
-                width: "100%",
-                height: "56vh",
-                minHeight: 420,
-                background: "#000",
-                overflow: "hidden",
-                touchAction: "none",
-                userSelect: "none",
+                position: "absolute",
+                top: 10,
+                left: 12,
+                right: 12,
+                zIndex: 3,
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                fontSize: 12,
+                color: "white",
+                opacity: 0.95,
+                textShadow: "0 1px 12px rgba(0,0,0,0.75)",
               }}
-              aria-label="Vorher/Nachher Vergleich"
             >
-              {/* Unten: Start */}
-              {firstUrl && (
-                <img
-                  src={firstUrl}
-                  alt="Start"
-                  draggable={false}
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    display: "block",
-                  }}
-                />
-              )}
-
-              {/* Oben: Heute – per Clip sichtbar */}
-              {latestUrl && (
-                <img
-                  src={latestUrl}
-                  alt="Heute"
-                  draggable={false}
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    display: "block",
-                    clipPath: `inset(0 ${100 - split}% 0 0)`,
-                  }}
-                />
-              )}
-
-              {/* Labels */}
               <div
                 style={{
-                  position: "absolute",
-                  top: 10,
-                  left: 12,
-                  right: 12,
-                  zIndex: 3,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  fontSize: 12,
-                  color: "white",
-                  opacity: 0.95,
-                  textShadow: "0 1px 12px rgba(0,0,0,0.75)",
-                }}
-              >
-                <div
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 999,
-                    background: "rgba(0,0,0,0.35)",
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    backdropFilter: "blur(6px)",
-                    WebkitBackdropFilter: "blur(6px)",
-                  }}
-                >
-                  Start{" "}
-                  {firstPhoto ? `• ${new Date(firstPhoto.date).toLocaleDateString()}` : ""}
-                </div>
-
-                <div
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 999,
-                    background: "rgba(0,0,0,0.35)",
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    backdropFilter: "blur(6px)",
-                    WebkitBackdropFilter: "blur(6px)",
-                  }}
-                >
-                  Heute{" "}
-                  {latestPhoto ? `• ${new Date(latestPhoto.date).toLocaleDateString()}` : ""}
-                </div>
-              </div>
-
-              {/* Verlauf oben */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 110,
-                  zIndex: 2,
-                  background:
-                    "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
-                }}
-              />
-
-              {/* Split-Line */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  bottom: 0,
-                  left: `${split}%`,
-                  width: 2,
-                  transform: "translateX(-1px)",
-                  background: "rgba(255,255,255,0.9)",
-                  zIndex: 4,
-                  boxShadow: "0 0 18px rgba(0,0,0,0.55)",
-                }}
-              />
-
-              {/* Handle */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: "50%",
-                  left: `${split}%`,
-                  transform: "translate(-50%, -50%)",
-                  zIndex: 5,
-                  width: 44,
-                  height: 44,
+                  padding: "6px 10px",
                   borderRadius: 999,
                   background: "rgba(0,0,0,0.35)",
-                  border: "1px solid rgba(255,255,255,0.22)",
-                  backdropFilter: "blur(8px)",
-                  WebkitBackdropFilter: "blur(8px)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "white",
-                  fontSize: 18,
-                  boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  backdropFilter: "blur(6px)",
+                  WebkitBackdropFilter: "blur(6px)",
                 }}
-                aria-hidden="true"
               >
-                ↔
+                Start{" "}
+                {firstPhoto ? `• ${new Date(firstPhoto.date).toLocaleDateString()}` : ""}
               </div>
 
-              {/* Hint unten (nur Text) */}
               <div
                 style={{
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  bottom: 10,
-                  display: "flex",
-                  justifyContent: "center",
-                  zIndex: 6,
-                  pointerEvents: "none",
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  background: "rgba(0,0,0,0.35)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  backdropFilter: "blur(6px)",
+                  WebkitBackdropFilter: "blur(6px)",
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 12,
-                    opacity: 0.85,
-                    color: "white",
-                    padding: "6px 10px",
-                    borderRadius: 999,
-                    background: "rgba(0,0,0,0.28)",
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    backdropFilter: "blur(6px)",
-                    WebkitBackdropFilter: "blur(6px)",
-                    textShadow: "0 1px 10px rgba(0,0,0,0.6)",
-                  }}
-                >
-                  Zieh nach links/rechts
-                </div>
+                Heute{" "}
+                {latestPhoto ? `• ${new Date(latestPhoto.date).toLocaleDateString()}` : ""}
+              </div>
+            </div>
+
+            {/* Verlauf oben */}
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 110,
+                zIndex: 2,
+                background: "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
+              }}
+            />
+
+            {/* Split-Line */}
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                left: `${split}%`,
+                width: 2,
+                transform: "translateX(-1px)",
+                background: "rgba(255,255,255,0.9)",
+                zIndex: 4,
+                boxShadow: "0 0 18px rgba(0,0,0,0.55)",
+              }}
+            />
+
+            {/* Handle */}
+            <div
+              style={{
+                position: "absolute",
+                top: "50%",
+                left: `${split}%`,
+                transform: "translate(-50%, -50%)",
+                zIndex: 5,
+                width: 44,
+                height: 44,
+                borderRadius: 999,
+                background: "rgba(0,0,0,0.35)",
+                border: "1px solid rgba(255,255,255,0.22)",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "white",
+                fontSize: 18,
+                boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+              }}
+              aria-hidden="true"
+            >
+              ↔
+            </div>
+
+            {/* Hint unten */}
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: 10,
+                display: "flex",
+                justifyContent: "center",
+                zIndex: 6,
+                pointerEvents: "none",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12,
+                  opacity: 0.85,
+                  color: "white",
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  background: "rgba(0,0,0,0.28)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  backdropFilter: "blur(6px)",
+                  WebkitBackdropFilter: "blur(6px)",
+                  textShadow: "0 1px 10px rgba(0,0,0,0.6)",
+                }}
+              >
+                Zieh nach links/rechts
               </div>
             </div>
           </div>
-
-        </>
+        </div>
       )}
     </Container>
   );
