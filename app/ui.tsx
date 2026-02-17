@@ -6,13 +6,12 @@ export function Container({ children }: { children: ReactNode }) {
 }
 
 export function Topbar({
-    title,
-    right,
-  }: {
-    title: React.ReactNode;
-    right?: React.ReactNode;
-  }) {
-  
+  title,
+  right,
+}: {
+  title: React.ReactNode;
+  right?: React.ReactNode;
+}) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
       <h1 style={{ margin: 0 }}>{title}</h1>
@@ -29,10 +28,11 @@ export function ButtonLink({ href, children }: { href: string; children: ReactNo
         display: "inline-block",
         padding: "10px 12px",
         borderRadius: 10,
-        border: "1px solid rgba(0,0,0,0.15)",
+        border: "1px solid var(--border)",
         textDecoration: "none",
         background: "transparent",
         cursor: "pointer",
+        color: "inherit",
       }}
     >
       {children}
@@ -45,7 +45,7 @@ export function Card({ children }: { children: ReactNode }) {
     <div
       style={{
         marginTop: 16,
-        border: "1px solid rgba(0,0,0,0.12)",
+        border: "1px solid var(--border)",
         borderRadius: 12,
         padding: 14,
       }}

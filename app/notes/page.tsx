@@ -67,9 +67,9 @@ export default function NotesPage() {
             style={{
               padding: "10px 12px",
               borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(255,255,255,0.06)",
-              color: "white",
+              border: "1px solid var(--border)",
+              background: "var(--surface-2)",
+              color: "var(--foreground)",
             }}
           />
           {day === todayKey && <div style={{ fontSize: 12, opacity: 0.7 }}>Heute</div>}
@@ -87,9 +87,9 @@ export default function NotesPage() {
               resize: "vertical",
               padding: "12px",
               borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(255,255,255,0.06)",
-              color: "white",
+              border: "1px solid var(--border)",
+              background: "var(--surface-2)",
+              color: "var(--foreground)",
               outline: "none",
               lineHeight: 1.4,
             }}
@@ -103,7 +103,7 @@ export default function NotesPage() {
             style={{
               padding: "12px",
               borderRadius: 12,
-              border: "1px solid rgba(0,0,0,0.15)",
+              border: "1px solid var(--border)",
               background: "white",
               color: "black",
               fontWeight: 800,
@@ -120,9 +120,9 @@ export default function NotesPage() {
             style={{
               padding: "12px",
               borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(255,255,255,0.06)",
-              color: "white",
+              border: "1px solid var(--border)",
+              background: "var(--surface-2)",
+              color: "var(--foreground)",
               fontWeight: 700,
               cursor: loading || text.trim().length === 0 ? "not-allowed" : "pointer",
               opacity: loading || text.trim().length === 0 ? 0.6 : 1,

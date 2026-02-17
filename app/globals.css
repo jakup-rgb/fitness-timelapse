@@ -6,10 +6,21 @@
   --foreground: #171717;
 
   --card: #ffffff;
+  --card-strong: #ffffff;
   --muted: rgba(23, 23, 23, 0.65);
+  --surface-2: rgba(0, 0, 0, 0.04);
   --border: rgba(0, 0, 0, 0.12);
 
   --nav-bg: rgba(240, 240, 242, 0.8);
+
+  /* Interactions */
+  --active-bg: rgba(0, 0, 0, 0.08);
+  --disabled-bg: rgba(0, 0, 0, 0.06);
+  --icon-tile-bg: rgba(0, 0, 0, 0.06);
+
+  /* Calendar */
+  --calendar-day-bg: rgba(0, 0, 0, 0.04);
+  --calendar-today-border: rgba(0, 0, 0, 0.35);
 }
 
 /* System Dark */
@@ -19,10 +30,21 @@
     --foreground: #ededed;
 
     --card: rgba(20, 20, 20, 0.95);
+    --card-strong: rgba(20, 20, 20, 0.98);
     --muted: rgba(237, 237, 237, 0.7);
+
+    --surface-2: rgba(255, 255, 255, 0.06);
     --border: rgba(255, 255, 255, 0.12);
 
     --nav-bg: rgba(0, 0, 0, 0.6);
+
+    --active-bg: rgba(255, 255, 255, 0.12);
+    --disabled-bg: rgba(255, 255, 255, 0.3);
+
+    --icon-tile-bg: rgba(0, 0, 0, 0.22);
+
+    --calendar-day-bg: rgba(255, 255, 255, 0.06);
+    --calendar-today-border: rgba(255, 255, 255, 0.55);
   }
 }
 
@@ -32,10 +54,21 @@ html.dark {
   --foreground: #ededed;
 
   --card: rgba(20, 20, 20, 0.95);
+  --card-strong: rgba(20, 20, 20, 0.98);
   --muted: rgba(237, 237, 237, 0.7);
+
+  --surface-2: rgba(255, 255, 255, 0.06);
   --border: rgba(255, 255, 255, 0.12);
 
   --nav-bg: rgba(0, 0, 0, 0.6);
+
+  --active-bg: rgba(255, 255, 255, 0.12);
+  --disabled-bg: rgba(255, 255, 255, 0.3);
+
+  --icon-tile-bg: rgba(0, 0, 0, 0.22);
+
+  --calendar-day-bg: rgba(255, 255, 255, 0.06);
+  --calendar-today-border: rgba(255, 255, 255, 0.55);
 }
 
 body {
@@ -43,7 +76,3 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
-
-:root { --active-bg: rgba(0,0,0,0.08); }
-@media (prefers-color-scheme: dark) { :root { --active-bg: rgba(255,255,255,0.12); } }
-html.dark { --active-bg: rgba(255,255,255,0.12); }

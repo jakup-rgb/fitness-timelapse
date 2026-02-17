@@ -18,7 +18,10 @@ export const metadata: Metadata = {
   title: "LetsGo",
   description: "Fitness Progress",
   manifest: "/manifest.json",
-  themeColor: "#000000",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+  ],
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -36,12 +39,12 @@ export default function RootLayout({
       <head>
         <link rel="manifest" href="/manifest.json" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta
-          name="apple-mobile-web-app-status-bar-style"
-          content="black-translucent"
-        />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="LetsGo" />
-        <meta name="theme-color" content="#000000" />
+
+        {/* Browser UI color (does not affect in-app styling) */}
+        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
       </head>
 
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
@@ -49,9 +52,7 @@ export default function RootLayout({
           {/* App Background wie in deinem Figma Code */}
           <div className="min-h-screen bg-gradient-to-br from-neutral-100 via-neutral-50 to-neutral-200 dark:from-neutral-950 dark:via-black dark:to-neutral-900 transition-colors">
             {/* Content + Platz für BottomNav */}
-            <div className="mx-auto max-w-md px-4 pt-4 pb-28">
-              {children}
-            </div>
+            <div className="mx-auto max-w-md px-4 pt-4 pb-28">{children}</div>
           </div>
 
           <BottomNav />

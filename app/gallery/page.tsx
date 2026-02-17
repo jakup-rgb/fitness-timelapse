@@ -162,11 +162,11 @@ export default function GalleryPage() {
               width: "min(520px, 100%)",
               borderRadius: 18,
               overflow: "hidden",
-              background: "rgba(20,20,20,0.95)",
-              border: "1px solid rgba(255,255,255,0.12)",
+              background: "var(--card)",
+              border: "1px solid var(--border)",
             }}
           >
-            <div style={{ padding: 12, fontSize: 12, opacity: 0.9, color: "white" }}>
+            <div style={{ padding: 12, fontSize: 12, opacity: 0.9, color: "var(--foreground)" }}>
               {new Date(openPhoto.date).toLocaleDateString("de-DE")}{" "}
               {new Date(openPhoto.date).toLocaleTimeString("de-DE", {
                 hour: "2-digit",
@@ -204,9 +204,9 @@ export default function GalleryPage() {
                   flex: 1,
                   padding: "12px",
                   borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.18)",
+                  border: "1px solid var(--border)",
                   background: "transparent",
-                  color: "white",
+                  color: "var(--foreground)",
                   cursor: "pointer",
                 }}
               >
@@ -219,9 +219,9 @@ export default function GalleryPage() {
                   flex: 1,
                   padding: "12px",
                   borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  background: "rgba(255,255,255,0.12)",
-                  color: "white",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-2)",
+                  color: "var(--foreground)",
                   cursor: "pointer",
                 }}
               >

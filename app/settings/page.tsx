@@ -35,7 +35,7 @@ export default function SettingsPage() {
             width: "100%",
             padding: 10,
             borderRadius: 10,
-            border: "1px solid rgba(0,0,0,0.15)",
+            border: "1px solid var(--border)",
             background: "transparent",
           }}
         />
@@ -53,9 +53,9 @@ export default function SettingsPage() {
     padding: "12px",
     width: "100%",
     borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(255,255,255,0.06)",
-    color: "white",
+    border: "1px solid var(--border)",
+    background: "var(--surface-2)",
+    color: "var(--foreground)",
     fontWeight: 600,
   }}
 >
@@ -70,7 +70,7 @@ export default function SettingsPage() {
             width: "100%",
             padding: "10px",
             borderRadius: 10,
-            border: "1px solid rgba(0,0,0,0.15)",
+            border: "1px solid var(--border)",
             background: "transparent",
             cursor: "pointer",
           }}

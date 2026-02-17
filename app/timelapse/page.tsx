@@ -219,11 +219,11 @@ export default function TimelapsePage() {
     active: boolean;
     onClick: () => void;
   }) {
-    const baseBg = active ? "white" : "rgba(255,255,255,0.08)";
-    const baseColor = active ? "black" : "white";
+    const baseBg = active ? "white" : "var(--surface-2)";
+    const baseColor = active ? "black" : "var(--foreground)";
     const baseBorder = active
-      ? "1px solid rgba(255,255,255,0.35)"
-      : "1px solid rgba(255,255,255,0.14)";
+      ? "1px solid var(--border)"
+      : "1px solid var(--border)";
 
     return (
       <button
@@ -290,9 +290,9 @@ export default function TimelapsePage() {
                 style={{
                   padding: "10px 12px",
                   borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "white",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-2)",
+                  color: "var(--foreground)",
                   fontWeight: 800,
                   cursor: "pointer",
                 }}
@@ -355,7 +355,7 @@ export default function TimelapsePage() {
                   flex: 1,
                   padding: "8px",
                   borderRadius: 10,
-                  border: "1px solid rgba(0,0,0,0.15)",
+                  border: "1px solid var(--border)",
                   background: "transparent",
                   cursor: "pointer",
                 }}
@@ -372,7 +372,7 @@ export default function TimelapsePage() {
                   flex: 2,
                   padding: "8px",
                   borderRadius: 10,
-                  border: "1px solid rgba(0,0,0,0.15)",
+                  border: "1px solid var(--border)",
                   background: "transparent",
                   cursor: "pointer",
                 }}
@@ -386,7 +386,7 @@ export default function TimelapsePage() {
                   flex: 1,
                   padding: "8px",
                   borderRadius: 10,
-                  border: "1px solid rgba(0,0,0,0.15)",
+                  border: "1px solid var(--border)",
                   background: "transparent",
                   cursor: "pointer",
                 }}
@@ -442,8 +442,8 @@ export default function TimelapsePage() {
               width: "100%",
               maxWidth: 520,
               borderRadius: 18,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(20,20,20,0.98)",
+              border: "1px solid var(--border)",
+              background: "var(--card-strong)",
               padding: 14,
               boxShadow: "0 30px 80px rgba(0,0,0,0.55)",
             }}
@@ -462,9 +462,9 @@ export default function TimelapsePage() {
                 style={{
                   padding: "8px 10px",
                   borderRadius: 10,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "white",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-2)",
+                  color: "var(--foreground)",
                   cursor: "pointer",
                 }}
               >
@@ -479,9 +479,9 @@ export default function TimelapsePage() {
                 style={{
                   padding: "12px",
                   borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: mode === "date" ? "white" : "rgba(255,255,255,0.06)",
-                  color: mode === "date" ? "black" : "white",
+                  border: "1px solid var(--border)",
+                  background: mode === "date" ? "white" : "var(--surface-2)",
+                  color: mode === "date"  ? "black" : "var(--foreground)",
                   fontWeight: 900,
                   cursor: "pointer",
                 }}
@@ -493,9 +493,9 @@ export default function TimelapsePage() {
                 style={{
                   padding: "12px",
                   borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: mode === "photo" ? "white" : "rgba(255,255,255,0.06)",
-                  color: mode === "photo" ? "black" : "white",
+                  border: "1px solid var(--border)",
+                  background: mode === "photo" ? "white" : "var(--surface-2)",
+                  color: mode === "photo"  ? "black" : "var(--foreground)",
                   fontWeight: 900,
                   cursor: "pointer",
                 }}
@@ -537,9 +537,9 @@ export default function TimelapsePage() {
                       width: "100%",
                       padding: "12px",
                       borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(255,255,255,0.06)",
-                      color: "white",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-2)",
+                      color: "var(--foreground)",
                     }}
                   />
                 </div>
@@ -553,9 +553,9 @@ export default function TimelapsePage() {
                       width: "100%",
                       padding: "12px",
                       borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(255,255,255,0.06)",
-                      color: "white",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-2)",
+                      color: "var(--foreground)",
                     }}
                   />
                 </div>
@@ -575,9 +575,9 @@ export default function TimelapsePage() {
                       width: "100%",
                       padding: "12px",
                       borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(255,255,255,0.06)",
-                      color: "white",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-2)",
+                      color: "var(--foreground)",
                     }}
                   >
                     {photosChrono.map((p) => (
@@ -597,9 +597,9 @@ export default function TimelapsePage() {
                       width: "100%",
                       padding: "12px",
                       borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(255,255,255,0.06)",
-                      color: "white",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-2)",
+                      color: "var(--foreground)",
                     }}
                   >
                     {photosChrono.map((p) => (
@@ -623,9 +623,9 @@ export default function TimelapsePage() {
                 style={{
                   padding: "12px",
                   borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "white",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-2)",
+                  color: "var(--foreground)",
                   fontWeight: 800,
                   cursor: "pointer",
                 }}
@@ -641,7 +641,7 @@ export default function TimelapsePage() {
                 style={{
                   padding: "12px",
                   borderRadius: 14,
-                  border: "1px solid rgba(0,0,0,0.15)",
+                  border: "1px solid var(--border)",
                   background: "white",
                   color: "black",
                   fontWeight: 900,

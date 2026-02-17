@@ -205,9 +205,9 @@ export default function CameraPage() {
               zIndex: 20,
               padding: "10px 12px",
               borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.25)",
+              border: "1px solid var(--border)",
               background: "rgba(0,0,0,0.45)",
-              color: "white",
+              color: "var(--foreground)",
               cursor: saving || starting ? "not-allowed" : "pointer",
               fontSize: 14,
               opacity: saving || starting ? 0.6 : 1,
@@ -235,7 +235,7 @@ export default function CameraPage() {
                 position: "absolute",
                 inset: 16,
                 borderRadius: 16,
-                border: "2px solid rgba(255,255,255,0.7)",
+                border: "2px solid var(--calendar-today-border)",
               }}
             />
 
@@ -262,7 +262,7 @@ export default function CameraPage() {
                 height: 90,
                 transform: "translateX(-50%)",
                 borderRadius: "50%",
-                border: "2px solid rgba(255,255,255,0.6)",
+                border: "2px solid var(--calendar-today-border)",
               }}
             />
 
@@ -307,7 +307,7 @@ export default function CameraPage() {
             width: "100%",
             padding: "12px",
             borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.15)",
+            border: "1px solid var(--border)",
             background: "transparent",
             cursor: saving || starting ? "not-allowed" : "pointer",
             fontSize: 16,

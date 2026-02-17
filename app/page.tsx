@@ -240,7 +240,7 @@ function toggleTheme() {
               style={{
                 padding: "8px 10px",
                 borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.15)",
+                border: "1px solid var(--border)",
                 background: "transparent",
                 cursor: "pointer",
                 fontSize: 18,
@@ -258,8 +258,8 @@ function toggleTheme() {
                   top: "calc(100% + 8px)",
                   minWidth: 220,
                   borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.15)",
-                  background: "rgba(20,20,20,0.95)",
+                  border: "1px solid var(--border)",
+                  background: "var(--card)",
                   padding: 10,
                   display: "grid",
                   gap: 10,
@@ -275,11 +275,11 @@ function toggleTheme() {
                     gap: 12,
                     padding: "8px 10px",
                     borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid var(--border)",
+                    background: "var(--surface-2)",
                   }}
                 >
-                  <div style={{ color: "white", fontWeight: 800, fontSize: 13 }}>
+                  <div style={{ color: "var(--foreground)", fontWeight: 800, fontSize: 13 }}>
                     Dark Mode
                   </div>
 
@@ -289,8 +289,8 @@ function toggleTheme() {
                       width: 46,
                       height: 26,
                       borderRadius: 999,
-                      border: "1px solid rgba(255,255,255,0.18)",
-                      background: theme === "dark" ? "white" : "rgba(255,255,255,0.16)",
+                      border: "1px solid var(--border)",
+                      background: theme === "dark" ? "white" : "var(--surface-2)",
                       position: "relative",
                       cursor: "pointer",
                       padding: 0,
@@ -519,7 +519,7 @@ function toggleTheme() {
                 height: 44,
                 borderRadius: 999,
                 background: "rgba(0,0,0,0.35)",
-                border: "1px solid rgba(255,255,255,0.22)",
+                border: "1px solid rgba(255,255,255,0.14)",
                 backdropFilter: "blur(8px)",
                 WebkitBackdropFilter: "blur(8px)",
                 display: "flex",

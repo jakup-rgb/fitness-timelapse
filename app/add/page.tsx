@@ -82,7 +82,7 @@ export default function AddPage() {
             width: "100%",
             padding: "12px",
             borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.15)",
+            border: "1px solid var(--border)",
             background: "transparent",
             cursor: "pointer",
             fontSize: 16,
@@ -105,7 +105,7 @@ export default function AddPage() {
                 width: "100%",
                 padding: "12px",
                 borderRadius: 12,
-                border: "1px solid rgba(0,0,0,0.15)",
+                border: "1px solid var(--border)",
                 background: "transparent",
               }}
             />
@@ -121,7 +121,7 @@ export default function AddPage() {
                 width: "100%",
                 padding: "12px",
                 borderRadius: 12,
-                border: "1px solid rgba(0,0,0,0.15)",
+                border: "1px solid var(--border)",
                 background: "transparent",
               }}
             />
@@ -136,8 +136,8 @@ export default function AddPage() {
             width: "100%",
             padding: "12px",
             borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.15)",
-            background: canSave ? "white" : "rgba(255,255,255,0.3)",
+            border: "1px solid var(--border)",
+            background: canSave ? "white" : "var(--disabled-bg)",
             color: "black",
             cursor: canSave ? "pointer" : "not-allowed",
             fontSize: 16,

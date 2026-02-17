@@ -120,10 +120,10 @@ export default function CalendarPage() {
                   height: 44,
                   borderRadius: 12,
                   border: isToday
-                    ? "2px solid rgba(255,255,255,0.55)"
-                    : "1px solid rgba(255,255,255,0.12)",
-                  background: hasPhoto ? "rgba(0, 200, 120, 0.22)" : "rgba(255,255,255,0.06)",
-                  color: "white",
+                    ? "2px solid var(--calendar-today-border)"
+                    : "1px solid var(--border)",
+                  background: hasPhoto ? "rgba(0, 200, 120, 0.22)" : "var(--calendar-day-bg)",
+                  color: "var(--foreground)",
                   cursor: "pointer",
                   fontWeight: 700,
                   display: "flex",
@@ -164,8 +164,8 @@ export default function CalendarPage() {
               width: "100%",
               maxWidth: 520,
               borderRadius: 18,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(20,20,20,0.95)",
+              border: "1px solid var(--border)",
+              background: "var(--card)",
               overflow: "hidden",
             }}
           >
@@ -176,9 +176,9 @@ export default function CalendarPage() {
               <button
                 onClick={() => setSelectedDay(null)}
                 style={{
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "white",
+                  border: "1px solid var(--border)",
+                  background: "var(--calendar-day-bg)",
+                  color: "var(--foreground)",
                   borderRadius: 12,
                   padding: "8px 10px",
                   cursor: "pointer",
