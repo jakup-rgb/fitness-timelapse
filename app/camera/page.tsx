@@ -109,7 +109,7 @@ export default function CameraPage() {
         );
 
         // Model liegt in /public/models/face_detector.task
-        const modelPath = "/models/face_detector.task";
+        const modelPath = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.task";
 
         // Versuch GPU, fallback CPU (auf manchen Geräten zickt GPU)
         try {
