@@ -29,6 +29,8 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+type ThemeMode = "light" | "dark";
+
 export default function Home() {
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [reminderTime, setReminderTime] = useState<string | null>(null);
@@ -51,13 +53,35 @@ export default function Home() {
     [photos]
   );
 
-  // ✅ Darkmode
-  const [isDark, setIsDark] = useState(false);
-
-  // Center-reveal split (0..100). Start: 50% (beide Hälften sichtbar)
+  // Center-reveal split (0..100). Start: 50%
   const [split, setSplit] = useState(50);
   const [dragging, setDragging] = useState(false);
   const compareRef = useRef<HTMLDivElement | null>(null);
+
+  // ✅ Darkmode
+  const [theme, setTheme] = useState<ThemeMode>("light");
+
+  function applyTheme(next: ThemeMode) {
+    setTheme(next);
+    localStorage.setItem("theme_mode", next);
+    // Tailwind-style / generisches Darkmode-Pattern:
+    document.documentElement.classList.toggle("dark", next === "dark");
+  }
+
+  useEffect(() => {
+    const saved = (localStorage.getItem("theme_mode") as ThemeMode | null) ?? null;
+    if (saved === "dark" || saved === "light") {
+      applyTheme(saved);
+    } else {
+      // default: system preference
+      const prefersDark =
+        typeof window !== "undefined" &&
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+      applyTheme(prefersDark ? "dark" : "light");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function refresh() {
     const all = await getAllPhotos(); // neueste -> älteste
@@ -78,38 +102,12 @@ export default function Home() {
     setReminderTime(rt);
   }, []);
 
-  // ✅ Theme initial laden (localStorage -> sonst system)
-  useEffect(() => {
-    const saved = localStorage.getItem("theme");
-    const systemPrefersDark =
-      typeof window !== "undefined" &&
-      window.matchMedia &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches;
-
-    const nextDark = saved ? saved === "dark" : systemPrefersDark;
-
-    setIsDark(nextDark);
-    if (nextDark) document.documentElement.classList.add("dark");
-    else document.documentElement.classList.remove("dark");
-  }, []);
-
-  // ✅ Theme anwenden + speichern wenn toggled
-  useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-    }
-  }, [isDark]);
-
-  // (Dein Notification-Reminder Code bleibt wie er ist)
+  // (optional) Web Notification wenn erlaubt
   useEffect(() => {
     if (!reminderTime) return;
     if (Notification.permission !== "granted") return;
 
-    const interval = setInterval(async () => {
+    const interval = setInterval(() => {
       const now = new Date();
       const currentTime =
         String(now.getHours()).padStart(2, "0") +
@@ -264,44 +262,43 @@ export default function Home() {
                   right: 0,
                   top: "calc(100% + 8px)",
                   minWidth: 200,
-                  borderRadius: 14,
+                  borderRadius: 12,
                   border: "1px solid rgba(0,0,0,0.15)",
                   background: "rgba(20,20,20,0.95)",
                   padding: 10,
                   display: "grid",
-                  gap: 10,
+                  gap: 8,
                   zIndex: 50,
                 }}
               >
-                {/* ✅ Dark Mode Toggle */}
+                {/* ✅ Darkmode Toggle */}
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    gap: 12,
-                    padding: "8px 10px",
+                    gap: 10,
+                    padding: "10px 12px",
                     borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.10)",
+                    border: "1px solid rgba(255,255,255,0.14)",
                     background: "rgba(255,255,255,0.06)",
-                    color: "white",
                   }}
                 >
-                  <div style={{ fontWeight: 800, fontSize: 13 }}>
-                    Dark Mode
-                  </div>
+                  <div style={{ fontWeight: 800, color: "white" }}>Dark Mode</div>
 
                   <button
-                    onClick={() => setIsDark((v) => !v)}
+                    onClick={() => applyTheme(theme === "dark" ? "light" : "dark")}
                     style={{
-                      width: 52,
-                      height: 30,
+                      width: 46,
+                      height: 28,
                       borderRadius: 999,
                       border: "1px solid rgba(255,255,255,0.18)",
-                      background: isDark ? "white" : "rgba(255,255,255,0.15)",
-                      cursor: "pointer",
+                      background:
+                        theme === "dark"
+                          ? "rgba(255,255,255,0.25)"
+                          : "rgba(255,255,255,0.10)",
                       position: "relative",
-                      padding: 0,
+                      cursor: "pointer",
                     }}
                     aria-label="Dark Mode umschalten"
                   >
@@ -309,24 +306,16 @@ export default function Home() {
                       style={{
                         position: "absolute",
                         top: 3,
-                        left: isDark ? 26 : 3,
-                        width: 24,
-                        height: 24,
+                        left: theme === "dark" ? 22 : 3,
+                        width: 22,
+                        height: 22,
                         borderRadius: 999,
-                        background: isDark ? "black" : "white",
-                        transition: "left 0.18s ease",
+                        background: "white",
+                        transition: "left 180ms ease",
                       }}
                     />
                   </button>
                 </div>
-
-                <div
-                  style={{
-                    height: 1,
-                    background: "rgba(255,255,255,0.10)",
-                    margin: "2px 0",
-                  }}
-                />
 
                 <ButtonLink href="/settings">Einstellungen</ButtonLink>
                 <ButtonLink href="/camera">Kamera</ButtonLink>
@@ -379,13 +368,19 @@ export default function Home() {
         </Card>
       )}
 
-      {/* Center-Reveal Compare (edge-to-edge) */}
+      {/* Center-Reveal Compare */}
       {photos.length === 0 ? (
         <Card>
           <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
         </Card>
       ) : (
-        <div style={{ marginLeft: -16, marginRight: -16, marginTop: 14 }}>
+        <div
+          style={{
+            marginLeft: -16,
+            marginRight: -16,
+            marginTop: 14,
+          }}
+        >
           <div
             ref={compareRef}
             onPointerDown={onPointerDown}
@@ -407,7 +402,7 @@ export default function Home() {
             }}
             aria-label="Vorher/Nachher Vergleich"
           >
-            {/* Unten: Start */}
+            {/* unten: Start */}
             {firstUrl && (
               <img
                 src={firstUrl}
@@ -424,7 +419,7 @@ export default function Home() {
               />
             )}
 
-            {/* Oben: Heute – per Clip sichtbar */}
+            {/* oben: Heute */}
             {latestUrl && (
               <img
                 src={latestUrl}
@@ -442,7 +437,7 @@ export default function Home() {
               />
             )}
 
-            {/* Labels */}
+            {/* labels */}
             <div
               style={{
                 position: "absolute",
@@ -488,7 +483,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Verlauf oben */}
+            {/* gradient top */}
             <div
               style={{
                 position: "absolute",
@@ -501,7 +496,7 @@ export default function Home() {
               }}
             />
 
-            {/* Split-Line */}
+            {/* split line */}
             <div
               style={{
                 position: "absolute",
@@ -516,7 +511,7 @@ export default function Home() {
               }}
             />
 
-            {/* Handle */}
+            {/* handle */}
             <div
               style={{
                 position: "absolute",
@@ -543,7 +538,7 @@ export default function Home() {
               ↔
             </div>
 
-            {/* Hint unten */}
+            {/* hint */}
             <div
               style={{
                 position: "absolute",
