@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import type { ReactNode } from "react";
+import { Providers } from "./providers";
+import { BottomNav } from "./components/BottomNav";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
   title: "LetsGo",
@@ -18,37 +26,36 @@ export const metadata: Metadata = {
   },
 };
 
-const themeInitScript = `
-(function () {
-  try {
-    var saved = localStorage.getItem("theme"); // "dark" | "light" | null
-    var systemDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-    var useDark = saved ? (saved === "dark") : systemDark;
-    var root = document.documentElement;
-    if (useDark) root.classList.add("dark"); else root.classList.remove("dark");
-  } catch (e) {}
-})();
-`;
-
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="de">
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#000000" />
-        <meta name="color-scheme" content="dark light" />
-
-        {/* iOS PWA Fullscreen */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta
+          name="apple-mobile-web-app-status-bar-style"
+          content="black-translucent"
+        />
         <meta name="apple-mobile-web-app-title" content="LetsGo" />
-
-        {/* Theme init BEFORE paint */}
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <meta name="theme-color" content="#000000" />
       </head>
 
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
+        <Providers>
+          {/* App Background wie in deinem Figma Code */}
+          <div className="min-h-screen bg-gradient-to-br from-neutral-100 via-neutral-50 to-neutral-200 dark:from-neutral-950 dark:via-black dark:to-neutral-900 transition-colors">
+            {/* Content + Platz für BottomNav */}
+            <div className="mx-auto max-w-md px-4 pt-4 pb-28">
+              {children}
+            </div>
+          </div>
+
+          <BottomNav />
+        </Providers>
       </body>
     </html>
   );
