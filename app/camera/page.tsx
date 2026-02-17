@@ -18,6 +18,11 @@ export default function CameraPage() {
 
   const [facingMode, setFacingMode] = useState<FacingMode>("user");
 
+  // ✅ Timer
+  const [timerSeconds, setTimerSeconds] = useState<0 | 3 | 5 | 10>(0);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const countdownRef = useRef<number | null>(null);
+
   // Double-tap to flip camera (mobile)
   const lastTapRef = useRef<number>(0);
 
@@ -92,6 +97,10 @@ export default function CameraPage() {
     startCamera(facingMode);
 
     return () => {
+      // ✅ Countdown cleanup
+      if (countdownRef.current) window.clearInterval(countdownRef.current);
+      countdownRef.current = null;
+
       stopStream();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -146,6 +155,38 @@ export default function CameraPage() {
     setFacingMode((m) => (m === "user" ? "environment" : "user"));
   }
 
+  // ✅ Start countdown then shoot
+  function startCountdownAndShoot(seconds: 3 | 5 | 10) {
+    // falls schon läuft → abbrechen
+    if (countdownRef.current) {
+      window.clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+
+    setError(null);
+    setCountdown(seconds);
+
+    countdownRef.current = window.setInterval(() => {
+      setCountdown((c) => {
+        if (c === null) return null;
+
+        if (c <= 1) {
+          if (countdownRef.current) window.clearInterval(countdownRef.current);
+          countdownRef.current = null;
+
+          // Countdown weg, dann Foto
+          setTimeout(() => {
+            setCountdown(null);
+            takePhoto();
+          }, 0);
+
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+  }
+
   return (
     <Container>
       <Topbar title="Kamera" right={<ButtonLink href="/next">Zurück</ButtonLink>} />
@@ -197,7 +238,7 @@ export default function CameraPage() {
           {/* ✅ Kamera-Wechsel Button als Overlay (immer sichtbar auf Handy) */}
           <button
             onClick={toggleCamera}
-            disabled={saving || starting}
+            disabled={saving || starting || countdown !== null}
             style={{
               position: "absolute",
               top: 12,
@@ -208,9 +249,9 @@ export default function CameraPage() {
               border: "1px solid var(--border)",
               background: "rgba(0,0,0,0.45)",
               color: "var(--foreground)",
-              cursor: saving || starting ? "not-allowed" : "pointer",
+              cursor: saving || starting || countdown !== null ? "not-allowed" : "pointer",
               fontSize: 14,
-              opacity: saving || starting ? 0.6 : 1,
+              opacity: saving || starting || countdown !== null ? 0.6 : 1,
               backdropFilter: "blur(6px)",
               WebkitBackdropFilter: "blur(6px)",
             }}
@@ -296,12 +337,36 @@ export default function CameraPage() {
               Kamera startet…
             </div>
           )}
+
+          {/* ✅ Countdown Overlay */}
+          {countdown !== null && countdown > 0 && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "rgba(0,0,0,0.35)",
+                color: "rgba(255,255,255,0.95)",
+                fontSize: 64,
+                fontWeight: 700,
+                zIndex: 30,
+                backdropFilter: "blur(2px)",
+                WebkitBackdropFilter: "blur(2px)",
+              }}
+            >
+              {countdown}
+            </div>
+          )}
         </div>
 
-        {/* Foto-Button */}
+        {/* ✅ Timer Button */}
         <button
-          onClick={takePhoto}
-          disabled={saving || starting}
+          onClick={() => {
+            setTimerSeconds((t) => (t === 0 ? 3 : t === 3 ? 5 : t === 5 ? 10 : 0));
+          }}
+          disabled={saving || starting || countdown !== null}
           style={{
             marginTop: 12,
             width: "100%",
@@ -309,12 +374,36 @@ export default function CameraPage() {
             borderRadius: 12,
             border: "1px solid var(--border)",
             background: "transparent",
-            cursor: saving || starting ? "not-allowed" : "pointer",
+            cursor: saving || starting || countdown !== null ? "not-allowed" : "pointer",
             fontSize: 16,
-            opacity: saving || starting ? 0.6 : 1,
+            opacity: saving || starting || countdown !== null ? 0.6 : 1,
           }}
         >
-          {saving ? "Speichere..." : "Foto machen"}
+          ⏱ Timer: {timerSeconds === 0 ? "Aus" : `${timerSeconds}s`}
+        </button>
+
+        {/* Foto-Button */}
+        <button
+          onClick={() => {
+            if (saving || starting) return;
+            if (countdown !== null) return;
+            if (timerSeconds === 0) takePhoto();
+            else startCountdownAndShoot(timerSeconds);
+          }}
+          disabled={saving || starting || countdown !== null}
+          style={{
+            marginTop: 12,
+            width: "100%",
+            padding: "12px",
+            borderRadius: 12,
+            border: "1px solid var(--border)",
+            background: "transparent",
+            cursor: saving || starting || countdown !== null ? "not-allowed" : "pointer",
+            fontSize: 16,
+            opacity: saving || starting || countdown !== null ? 0.6 : 1,
+          }}
+        >
+          {saving ? "Speichere..." : countdown !== null ? `Foto in ${countdown}...` : "Foto machen"}
         </button>
 
         {/* verstecktes Canvas für den Snapshot */}
