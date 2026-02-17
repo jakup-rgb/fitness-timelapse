@@ -105,11 +105,11 @@ export default function CameraPage() {
       try {
         // wasm root per offizieller Doku :contentReference[oaicite:2]{index=2}
         const vision = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
         );
 
         // Model liegt in /public/models/face_detector.task
-        const modelPath = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.task";
+        const modelPath = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.task?alt=media";
 
         // Versuch GPU, fallback CPU (auf manchen Geräten zickt GPU)
         try {
@@ -129,9 +129,10 @@ export default function CameraPage() {
           if (!cancelled) faceDetectorRef.current = fd;
         }
       } catch {
+        console.error("Face-Assist init error");
         if (!cancelled) {
           setError(
-            "Face-Assist konnte nicht geladen werden. Prüfe ob /public/models/face_detector.task vorhanden ist."
+            "Face-Assist konnte nicht geladen werden."
           );
         }
       }
