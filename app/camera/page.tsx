@@ -378,8 +378,8 @@ ctx.restore();
           const faceW = bb.width * scale;
 
           const dist = Math.hypot(x - circleCx, y - circleCy);
-          const centerOK = dist <= circleR * 0.8; // slightly stricter
-          const sizeOK = faceW >= circleR * 1.25 && faceW <= circleR * 2.3;
+          const centerOK = dist <= circleR * 1.05; //  leicht großzügiger, damit es nicht so zappelig ist
+          const sizeOK = faceW >= circleR * 0.9 && faceW <= circleR * 3.2;
 
           ok = centerOK && sizeOK;
         }
@@ -389,13 +389,18 @@ ctx.restore();
 
       setAligned(ok);
 
-      if (ok) goodFramesRef.current += 1;
-      else goodFramesRef.current = 0;
+      if (ok) {
+  if (goodFramesRef.current === 0) {
+    goodFramesRef.current = Date.now();
+  }
+} else {
+  goodFramesRef.current = 0;
+}
 
       const now = Date.now();
       const cooldownMs = 3000;
 
-      const stableEnough = goodFramesRef.current >= 12;
+      const stableEnough = goodFramesRef.current !== 0 && Date.now() - goodFramesRef.current > 600; // mindestens 600ms stabil in Position (ca. 10 Frames), damit es nicht zu schnell auslöst bei zufälligen Erkennungen
       const cooldownOk = now - lastShotAtRef.current > cooldownMs;
 
       if (stableEnough && cooldownOk && !saving && !starting && countdown === null && autoCountdown === null) {
