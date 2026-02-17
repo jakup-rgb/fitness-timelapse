@@ -53,35 +53,23 @@ export default function Home() {
     [photos]
   );
 
-  // Center-reveal split (0..100). Start: 50%
+  // Center-reveal split (0..100). Start: 50% (beide Hälften sichtbar)
   const [split, setSplit] = useState(50);
   const [dragging, setDragging] = useState(false);
   const compareRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ Darkmode
+  // ✅ Theme
   const [theme, setTheme] = useState<ThemeMode>("light");
 
   function applyTheme(next: ThemeMode) {
     setTheme(next);
-    localStorage.setItem("theme_mode", next);
-    // Tailwind-style / generisches Darkmode-Pattern:
-    document.documentElement.classList.toggle("dark", next === "dark");
-  }
-
-  useEffect(() => {
-    const saved = (localStorage.getItem("theme_mode") as ThemeMode | null) ?? null;
-    if (saved === "dark" || saved === "light") {
-      applyTheme(saved);
+    if (next === "dark") {
+      document.documentElement.classList.add("dark");
     } else {
-      // default: system preference
-      const prefersDark =
-        typeof window !== "undefined" &&
-        window.matchMedia &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches;
-      applyTheme(prefersDark ? "dark" : "light");
+      document.documentElement.classList.remove("dark");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    localStorage.setItem("theme", next);
+  }
 
   async function refresh() {
     const all = await getAllPhotos(); // neueste -> älteste
@@ -102,32 +90,24 @@ export default function Home() {
     setReminderTime(rt);
   }, []);
 
-  // (optional) Web Notification wenn erlaubt
+  // ✅ Theme beim Start laden
   useEffect(() => {
-    if (!reminderTime) return;
-    if (Notification.permission !== "granted") return;
+    const saved = (localStorage.getItem("theme") as ThemeMode | null) ?? null;
 
-    const interval = setInterval(() => {
-      const now = new Date();
-      const currentTime =
-        String(now.getHours()).padStart(2, "0") +
-        ":" +
-        String(now.getMinutes()).padStart(2, "0");
+    if (saved === "dark" || saved === "light") {
+      applyTheme(saved);
+      return;
+    }
 
-      if (currentTime !== reminderTime) return;
+    // Fallback: System preference
+    const prefersDark =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
 
-      const today = dayKey(new Date());
-      const hasPhoto = photos.some((p) => dayKey(new Date(p.date)) === today);
-
-      if (!hasPhoto) {
-        new Notification("LetsGo 🔥", {
-          body: "Du hast heute noch kein Progress-Foto gemacht!",
-        });
-      }
-    }, 60000);
-
-    return () => clearInterval(interval);
-  }, [reminderTime, photos]);
+    applyTheme(prefersDark ? "dark" : "light");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // check: heute foto?
   useEffect(() => {
@@ -261,44 +241,44 @@ export default function Home() {
                   position: "absolute",
                   right: 0,
                   top: "calc(100% + 8px)",
-                  minWidth: 200,
+                  minWidth: 220,
                   borderRadius: 12,
                   border: "1px solid rgba(0,0,0,0.15)",
                   background: "rgba(20,20,20,0.95)",
                   padding: 10,
                   display: "grid",
-                  gap: 8,
+                  gap: 10,
                   zIndex: 50,
                 }}
               >
-                {/* ✅ Darkmode Toggle */}
+                {/* ✅ Darkmode Switch */}
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    gap: 10,
-                    padding: "10px 12px",
+                    gap: 12,
+                    padding: "8px 10px",
                     borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
+                    border: "1px solid rgba(255,255,255,0.12)",
                     background: "rgba(255,255,255,0.06)",
                   }}
                 >
-                  <div style={{ fontWeight: 800, color: "white" }}>Dark Mode</div>
+                  <div style={{ color: "white", fontWeight: 800, fontSize: 13 }}>
+                    Dark Mode
+                  </div>
 
                   <button
                     onClick={() => applyTheme(theme === "dark" ? "light" : "dark")}
                     style={{
                       width: 46,
-                      height: 28,
+                      height: 26,
                       borderRadius: 999,
                       border: "1px solid rgba(255,255,255,0.18)",
-                      background:
-                        theme === "dark"
-                          ? "rgba(255,255,255,0.25)"
-                          : "rgba(255,255,255,0.10)",
+                      background: theme === "dark" ? "white" : "rgba(255,255,255,0.16)",
                       position: "relative",
                       cursor: "pointer",
+                      padding: 0,
                     }}
                     aria-label="Dark Mode umschalten"
                   >
@@ -306,12 +286,12 @@ export default function Home() {
                       style={{
                         position: "absolute",
                         top: 3,
-                        left: theme === "dark" ? 22 : 3,
-                        width: 22,
-                        height: 22,
+                        left: theme === "dark" ? 24 : 3,
+                        width: 20,
+                        height: 20,
                         borderRadius: 999,
-                        background: "white",
-                        transition: "left 180ms ease",
+                        background: theme === "dark" ? "black" : "white",
+                        transition: "left 0.18s ease",
                       }}
                     />
                   </button>
@@ -368,7 +348,7 @@ export default function Home() {
         </Card>
       )}
 
-      {/* Center-Reveal Compare */}
+      {/* Center-Reveal Compare (edge-to-edge) */}
       {photos.length === 0 ? (
         <Card>
           <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
@@ -402,7 +382,7 @@ export default function Home() {
             }}
             aria-label="Vorher/Nachher Vergleich"
           >
-            {/* unten: Start */}
+            {/* Unten: Start */}
             {firstUrl && (
               <img
                 src={firstUrl}
@@ -419,7 +399,7 @@ export default function Home() {
               />
             )}
 
-            {/* oben: Heute */}
+            {/* Oben: Heute – per Clip sichtbar */}
             {latestUrl && (
               <img
                 src={latestUrl}
@@ -437,7 +417,7 @@ export default function Home() {
               />
             )}
 
-            {/* labels */}
+            {/* Labels */}
             <div
               style={{
                 position: "absolute",
@@ -483,7 +463,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* gradient top */}
+            {/* Verlauf oben */}
             <div
               style={{
                 position: "absolute",
@@ -492,11 +472,12 @@ export default function Home() {
                 right: 0,
                 height: 110,
                 zIndex: 2,
-                background: "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
+                background:
+                  "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
               }}
             />
 
-            {/* split line */}
+            {/* Split-Line */}
             <div
               style={{
                 position: "absolute",
@@ -511,7 +492,7 @@ export default function Home() {
               }}
             />
 
-            {/* handle */}
+            {/* Handle */}
             <div
               style={{
                 position: "absolute",
@@ -538,7 +519,7 @@ export default function Home() {
               ↔
             </div>
 
-            {/* hint */}
+            {/* Hint unten */}
             <div
               style={{
                 position: "absolute",
