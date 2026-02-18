@@ -33,10 +33,10 @@ export default function CameraPage() {
   // ✅ Auto Align / Face assist
   const [autoMode, setAutoMode] = useState(false);
   const [aligned, setAligned] = useState<boolean | null>(null); // null = unknown
-  const goodFramesRef = useRef(0);
+  const goodSinceRef = useRef<number>(0); // time-based stability
   const lastShotAtRef = useRef(0);
 
-  // ✅ Auto Countdown (before auto-shot)
+  // ✅ Auto Countdown (before auto-shot) - used for both face/gesture
   const [autoDelaySeconds, setAutoDelaySeconds] = useState<0 | 2 | 3 | 5>(3);
   const [autoCountdown, setAutoCountdown] = useState<number | null>(null);
   const autoCountdownRef = useRef<number | null>(null);
@@ -44,6 +44,7 @@ export default function CameraPage() {
   // ✅ Gesture Mode (Hand hoch = Foto)
   const [gestureMode, setGestureMode] = useState(false);
   const lastGestureAtRef = useRef(0);
+  const handStableSinceRef = useRef<number>(0); // ✅ 1s hold
 
   // MediaPipe refs
   const faceDetectorRef = useRef<FaceDetector | null>(null);
@@ -121,11 +122,11 @@ export default function CameraPage() {
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
         const vision = await FilesetResolver.forVisionTasks(wasmRoot);
 
-        // ✅ OFFICIAL-ish model link for face detector (.tflite)
+        // Face model (.tflite)
         const faceModel =
           "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite";
 
-        // ✅ Hand model (.task)
+        // Hand model (.task)
         const handModel =
           "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task";
 
@@ -249,9 +250,10 @@ export default function CameraPage() {
   }
 
   function resetAutoStuff() {
-    goodFramesRef.current = 0;
+    goodSinceRef.current = 0;
     setAligned(null);
-    lastGestureAtRef.current = 0;
+
+    handStableSinceRef.current = 0;
 
     if (autoCountdownRef.current) window.clearInterval(autoCountdownRef.current);
     autoCountdownRef.current = null;
@@ -378,7 +380,7 @@ export default function CameraPage() {
       const circleCy = 60 + 45;
       const circleR = 45;
 
-      // ---- Face align (optional, only if autoMode)
+      // ---- Face align (only if autoMode)
       let okFace = false;
 
       if (autoMode && fd) {
@@ -413,26 +415,15 @@ export default function CameraPage() {
       if (autoMode) setAligned(okFace);
       else setAligned(null);
 
-      // ---- Hand visible (gesture mode)
-      let handVisible = false;
-      if (gestureMode && hl) {
-        try {
-          const hands = hl.detectForVideo(video, performance.now());
-          handVisible = (hands?.landmarks?.length ?? 0) > 0;
-        } catch {
-          handVisible = false;
-        }
-      }
-
-      // stability logic (time-based for consistency)
+      // time stability for face (600ms)
       if (autoMode) {
         if (okFace) {
-          if (goodFramesRef.current === 0) goodFramesRef.current = Date.now();
+          if (goodSinceRef.current === 0) goodSinceRef.current = Date.now();
         } else {
-          goodFramesRef.current = 0;
+          goodSinceRef.current = 0;
         }
       } else {
-        goodFramesRef.current = 0;
+        goodSinceRef.current = 0;
       }
 
       const now = Date.now();
@@ -440,7 +431,7 @@ export default function CameraPage() {
 
       // Auto-shot when face aligned long enough
       const faceStableEnough =
-        autoMode && goodFramesRef.current !== 0 && now - goodFramesRef.current > 600;
+        autoMode && goodSinceRef.current !== 0 && now - goodSinceRef.current > 600;
 
       if (
         faceStableEnough &&
@@ -450,27 +441,94 @@ export default function CameraPage() {
         !starting
       ) {
         lastShotAtRef.current = now;
-        goodFramesRef.current = 0;
+        goodSinceRef.current = 0;
 
         if (autoDelaySeconds === 0) takePhoto();
         else startAutoCountdownAndShoot(autoDelaySeconds);
       }
 
-      // Gesture-shot when hand is visible
-      const gestureCooldownMs = 2500;
-      const gestureOk =
+      // ---- Hand trigger (gesture mode): nur offene Handfläche (✋) + groß genug + nicht am Rand
+      let handTrigger = false;
+
+      if (gestureMode && hl) {
+        try {
+          const hands = hl.detectForVideo(video, performance.now());
+          const lm = hands?.landmarks?.[0]; // nur erste Hand
+
+          if (lm && lm.length >= 21) {
+            const wrist = lm[0];
+
+            // Tips: 4,8,12,16,20  | "PIPs" näher zur Hand: 3,6,10,14,18
+            const tips = [4, 8, 12, 16, 20];
+            const pips = [3, 6, 10, 14, 18];
+
+            // Finger "extended": tip weiter weg vom wrist als pip
+            let extendedCount = 0;
+            for (let i = 0; i < 5; i++) {
+              const tip = lm[tips[i]];
+              const pip = lm[pips[i]];
+              const dTip = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+              const dPip = Math.hypot(pip.x - wrist.x, pip.y - wrist.y);
+              if (dTip > dPip + 0.02) extendedCount++;
+            }
+
+            // Handgröße: Bounding box in normalized coords
+            let minX = 1,
+              minY = 1,
+              maxX = 0,
+              maxY = 0;
+            for (const p of lm) {
+              minX = Math.min(minX, p.x);
+              minY = Math.min(minY, p.y);
+              maxX = Math.max(maxX, p.x);
+              maxY = Math.max(maxY, p.y);
+            }
+            const boxW = maxX - minX;
+            const boxH = maxY - minY;
+            const area = boxW * boxH;
+
+            // ✅ Bedingungen (tuneable)
+            const openPalm = extendedCount >= 4; // 4-5 Finger offen
+            const bigEnough = area > 0.07; // ✅ STRIKTER: Hand muss wirklich präsent sein
+            const notEdge =
+              minX > 0.06 && maxX < 0.94 && minY > 0.06 && maxY < 0.94; // nicht abgeschnitten
+
+            handTrigger = openPalm && bigEnough && notEdge;
+          }
+        } catch {
+          handTrigger = false;
+        }
+      }
+
+      // ✅ Stabilität über Zeit: 1 Sekunde halten (wie du wolltest)
+      if (gestureMode) {
+        if (handTrigger) {
+          if (handStableSinceRef.current === 0) handStableSinceRef.current = now;
+        } else {
+          handStableSinceRef.current = 0;
+        }
+      } else {
+        handStableSinceRef.current = 0;
+      }
+
+      const handStableEnough =
         gestureMode &&
-        handVisible &&
+        handStableSinceRef.current !== 0 &&
+        now - handStableSinceRef.current > 1000; // ✅ 1s halten
+
+      const gestureCooldownMs = 3000;
+
+      const gestureOk =
+        handStableEnough &&
         now - lastGestureAtRef.current > gestureCooldownMs &&
         autoCountdown === null &&
         !saving &&
         !starting;
 
-      // Optional: require face to be aligned too when autoMode is ON
-      const requireFaceIfAutoOn = !autoMode || okFace;
-
-      if (gestureOk && requireFaceIfAutoOn) {
+      // ✅ Hand soll AUCH ohne Face-Align auslösen
+      if (gestureOk) {
         lastGestureAtRef.current = now;
+        handStableSinceRef.current = 0;
 
         if (autoDelaySeconds === 0) takePhoto();
         else startAutoCountdownAndShoot(autoDelaySeconds);
@@ -567,9 +625,13 @@ export default function CameraPage() {
               border: "1px solid var(--border)",
               background: "rgba(0,0,0,0.45)",
               color: "var(--foreground)",
-              cursor: saving || starting || countdown !== null || autoCountdown !== null ? "not-allowed" : "pointer",
+              cursor:
+                saving || starting || countdown !== null || autoCountdown !== null
+                  ? "not-allowed"
+                  : "pointer",
               fontSize: 14,
-              opacity: saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
+              opacity:
+                saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
               backdropFilter: "blur(6px)",
               WebkitBackdropFilter: "blur(6px)",
             }}
@@ -717,9 +779,13 @@ export default function CameraPage() {
             borderRadius: 12,
             border: "1px solid var(--border)",
             background: "transparent",
-            cursor: saving || starting || countdown !== null || autoCountdown !== null ? "not-allowed" : "pointer",
+            cursor:
+              saving || starting || countdown !== null || autoCountdown !== null
+                ? "not-allowed"
+                : "pointer",
             fontSize: 16,
-            opacity: saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
+            opacity:
+              saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
           }}
         >
           🎯 Auto (Face): {autoMode ? "An" : "Aus"}
@@ -739,12 +805,17 @@ export default function CameraPage() {
             borderRadius: 12,
             border: "1px solid var(--border)",
             background: "transparent",
-            cursor: saving || starting || countdown !== null || autoCountdown !== null ? "not-allowed" : "pointer",
+            cursor:
+              saving || starting || countdown !== null || autoCountdown !== null
+                ? "not-allowed"
+                : "pointer",
             fontSize: 16,
-            opacity: saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
+            opacity:
+              saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
           }}
         >
-          ✋ Handzeichen-Foto: {gestureMode ? "An" : "Aus"}
+          ✋ Handzeichen-Foto: {gestureMode ? "An" : "Aus"}{" "}
+          {gestureMode ? "(halte 1 Sek.)" : ""}
         </button>
 
         {/* Auto Countdown Selector (works for both auto + gesture) */}
@@ -752,7 +823,13 @@ export default function CameraPage() {
           onClick={() => {
             setAutoDelaySeconds((s) => (s === 0 ? 2 : s === 2 ? 3 : s === 3 ? 5 : 0));
           }}
-          disabled={saving || starting || countdown !== null || autoCountdown !== null || (!autoMode && !gestureMode)}
+          disabled={
+            saving ||
+            starting ||
+            countdown !== null ||
+            autoCountdown !== null ||
+            (!autoMode && !gestureMode)
+          }
           style={{
             marginTop: 12,
             width: "100%",
@@ -761,13 +838,22 @@ export default function CameraPage() {
             border: "1px solid var(--border)",
             background: "transparent",
             cursor:
-              saving || starting || countdown !== null || autoCountdown !== null || (!autoMode && !gestureMode)
+              saving ||
+              starting ||
+              countdown !== null ||
+              autoCountdown !== null ||
+              (!autoMode && !gestureMode)
                 ? "not-allowed"
                 : "pointer",
             fontSize: 16,
-            opacity: saving || starting || countdown !== null || autoCountdown !== null || (!autoMode && !gestureMode)
-              ? 0.6
-              : 1,
+            opacity:
+              saving ||
+              starting ||
+              countdown !== null ||
+              autoCountdown !== null ||
+              (!autoMode && !gestureMode)
+                ? 0.6
+                : 1,
           }}
         >
           ⏳ Auto-Countdown: {autoDelaySeconds === 0 ? "Aus" : `${autoDelaySeconds}s`}
@@ -779,7 +865,14 @@ export default function CameraPage() {
           onClick={() => {
             setTimerSeconds((t) => (t === 0 ? 3 : t === 3 ? 5 : t === 5 ? 10 : 0));
           }}
-          disabled={saving || starting || countdown !== null || autoCountdown !== null || autoMode || gestureMode}
+          disabled={
+            saving ||
+            starting ||
+            countdown !== null ||
+            autoCountdown !== null ||
+            autoMode ||
+            gestureMode
+          }
           style={{
             marginTop: 12,
             width: "100%",
@@ -788,12 +881,24 @@ export default function CameraPage() {
             border: "1px solid var(--border)",
             background: "transparent",
             cursor:
-              saving || starting || countdown !== null || autoCountdown !== null || autoMode || gestureMode
+              saving ||
+              starting ||
+              countdown !== null ||
+              autoCountdown !== null ||
+              autoMode ||
+              gestureMode
                 ? "not-allowed"
                 : "pointer",
             fontSize: 16,
             opacity:
-              saving || starting || countdown !== null || autoCountdown !== null || autoMode || gestureMode ? 0.6 : 1,
+              saving ||
+              starting ||
+              countdown !== null ||
+              autoCountdown !== null ||
+              autoMode ||
+              gestureMode
+                ? 0.6
+                : 1,
           }}
         >
           ⏱ Timer: {timerSeconds === 0 ? "Aus" : `${timerSeconds}s`}
@@ -817,18 +922,22 @@ export default function CameraPage() {
             borderRadius: 12,
             border: "1px solid var(--border)",
             background: "transparent",
-            cursor: saving || starting || countdown !== null || autoCountdown !== null ? "not-allowed" : "pointer",
+            cursor:
+              saving || starting || countdown !== null || autoCountdown !== null
+                ? "not-allowed"
+                : "pointer",
             fontSize: 16,
-            opacity: saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
+            opacity:
+              saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
           }}
         >
           {saving
             ? "Speichere..."
             : countdown !== null
-              ? `Foto in ${countdown}...`
-              : autoCountdown !== null
-                ? `Auto-Foto in ${autoCountdown}...`
-                : "Foto machen"}
+            ? `Foto in ${countdown}...`
+            : autoCountdown !== null
+            ? `Auto-Foto in ${autoCountdown}...`
+            : "Foto machen"}
         </button>
 
         <canvas ref={canvasRef} style={{ display: "none" }} />
