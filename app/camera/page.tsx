@@ -6,7 +6,11 @@ import { Container, Topbar, ButtonLink, Card } from "../ui";
 import { addPhoto } from "../lib/db";
 
 // ✅ MediaPipe
-import { FaceDetector, FilesetResolver } from "@mediapipe/tasks-vision";
+import {
+  FaceDetector,
+  FilesetResolver,
+  HandLandmarker,
+} from "@mediapipe/tasks-vision";
 
 type FacingMode = "user" | "environment";
 
@@ -37,8 +41,13 @@ export default function CameraPage() {
   const [autoCountdown, setAutoCountdown] = useState<number | null>(null);
   const autoCountdownRef = useRef<number | null>(null);
 
+  // ✅ Gesture Mode (Hand hoch = Foto)
+  const [gestureMode, setGestureMode] = useState(false);
+  const lastGestureAtRef = useRef(0);
+
   // MediaPipe refs
   const faceDetectorRef = useRef<FaceDetector | null>(null);
+  const handLandmarkerRef = useRef<HandLandmarker | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastVideoTimeRef = useRef<number>(-1);
 
@@ -106,40 +115,54 @@ export default function CameraPage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function initFaceDetector() {
+    async function initVision() {
       try {
-        const vision = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
-        );
+        const wasmRoot =
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
+        const vision = await FilesetResolver.forVisionTasks(wasmRoot);
 
-        // ✅ OFFICIAL model link (.tflite)
-        const modelPath =
+        // ✅ OFFICIAL-ish model link for face detector (.tflite)
+        const faceModel =
           "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite";
 
-        // try GPU, fallback CPU
+        // ✅ Hand model (.task)
+        const handModel =
+          "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task";
+
+        // FaceDetector (GPU try -> CPU fallback)
         try {
           const fd = await FaceDetector.createFromOptions(vision, {
-            baseOptions: { modelAssetPath: modelPath, delegate: "GPU" as any },
+            baseOptions: { modelAssetPath: faceModel, delegate: "GPU" as any },
             runningMode: "VIDEO",
             minDetectionConfidence: 0.6,
           });
           if (!cancelled) faceDetectorRef.current = fd;
-          return;
         } catch {
           const fd = await FaceDetector.createFromOptions(vision, {
-            baseOptions: { modelAssetPath: modelPath, delegate: "CPU" as any },
+            baseOptions: { modelAssetPath: faceModel, delegate: "CPU" as any },
             runningMode: "VIDEO",
             minDetectionConfidence: 0.6,
           });
           if (!cancelled) faceDetectorRef.current = fd;
         }
+
+        // HandLandmarker (CPU = am stabilsten)
+        const hl = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: handModel, delegate: "CPU" as any },
+          runningMode: "VIDEO",
+          numHands: 1,
+          minHandDetectionConfidence: 0.6,
+          minHandPresenceConfidence: 0.6,
+          minTrackingConfidence: 0.6,
+        });
+        if (!cancelled) handLandmarkerRef.current = hl;
       } catch (e) {
-        console.error("Face-Assist init error:", e);
-        if (!cancelled) setError("Face-Assist konnte nicht geladen werden.");
+        console.error("Vision init error:", e);
+        if (!cancelled) setError("Face/Hand-Assist konnte nicht geladen werden.");
       }
     }
 
-    initFaceDetector();
+    initVision();
 
     return () => {
       cancelled = true;
@@ -147,6 +170,11 @@ export default function CameraPage() {
         faceDetectorRef.current?.close();
       } catch {}
       faceDetectorRef.current = null;
+
+      try {
+        handLandmarkerRef.current?.close();
+      } catch {}
+      handLandmarkerRef.current = null;
     };
   }, []);
 
@@ -195,20 +223,14 @@ export default function CameraPage() {
       return;
     }
 
-
-ctx.save();
-
-if (facingMode === "user") {
-  // Spiegeln, damit gespeichertes Foto wie Vorschau aussieht
-  ctx.translate(w, 0);
-  ctx.scale(-1, 1);
-}
-
-ctx.drawImage(video, 0, 0, w, h);
-
-ctx.restore();
-
-
+    // ✅ Save selfie as mirrored (match preview)
+    ctx.save();
+    if (facingMode === "user") {
+      ctx.translate(w, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(video, 0, 0, w, h);
+    ctx.restore();
 
     canvas.toBlob(
       async (blob) => {
@@ -226,15 +248,18 @@ ctx.restore();
     );
   }
 
-  function toggleCamera() {
-    // reset assist + timers so nothing auto-fires
+  function resetAutoStuff() {
     goodFramesRef.current = 0;
     setAligned(null);
+    lastGestureAtRef.current = 0;
 
     if (autoCountdownRef.current) window.clearInterval(autoCountdownRef.current);
     autoCountdownRef.current = null;
     setAutoCountdown(null);
+  }
 
+  function toggleCamera() {
+    resetAutoStuff();
     setFacingMode((m) => (m === "user" ? "environment" : "user"));
   }
 
@@ -268,7 +293,7 @@ ctx.restore();
     }, 1000);
   }
 
-  // ✅ Auto countdown then shoot (for face assist)
+  // ✅ Auto countdown then shoot (for face/gesture assist)
   function startAutoCountdownAndShoot(seconds: 2 | 3 | 5) {
     if (autoCountdownRef.current) {
       window.clearInterval(autoCountdownRef.current);
@@ -297,26 +322,21 @@ ctx.restore();
     }, 1000);
   }
 
-  // ✅ Face assist loop (throttled)
+  // ✅ Face + Hand assist loop
   useEffect(() => {
-    if (!autoMode) {
+    if (!autoMode && !gestureMode) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
-      goodFramesRef.current = 0;
-      setAligned(null);
-
-      if (autoCountdownRef.current) window.clearInterval(autoCountdownRef.current);
-      autoCountdownRef.current = null;
-      setAutoCountdown(null);
-
+      resetAutoStuff();
       return;
     }
 
     function loop() {
       const video = videoRef.current;
       const fd = faceDetectorRef.current;
+      const hl = handLandmarkerRef.current;
 
-      if (!video || !fd) {
+      if (!video) {
         rafRef.current = requestAnimationFrame(loop);
         return;
       }
@@ -324,7 +344,7 @@ ctx.restore();
       const vw = video.videoWidth;
       const vh = video.videoHeight;
 
-      // must be ready; also pause detection while countdowns run
+      // pause while busy
       if (!vw || !vh || starting || saving || countdown !== null || autoCountdown !== null) {
         rafRef.current = requestAnimationFrame(loop);
         return;
@@ -353,65 +373,107 @@ ctx.restore();
       const offsetX = (W - dispW) / 2;
       const offsetY = (H - dispH) / 2;
 
-      // Head circle (same as overlay)
+      // Head circle (overlay)
       const circleCx = W / 2;
       const circleCy = 60 + 45;
       const circleR = 45;
 
-      let ok = false;
+      // ---- Face align (optional, only if autoMode)
+      let okFace = false;
 
-      try {
-        const res = fd.detectForVideo(video, performance.now());
-        const det = res?.detections?.[0];
-        const bb = det?.boundingBox;
+      if (autoMode && fd) {
+        try {
+          const res = fd.detectForVideo(video, performance.now());
+          const det = res?.detections?.[0];
+          const bb = det?.boundingBox;
 
-        if (bb) {
-          const fx = bb.originX + bb.width / 2;
-          const fy = bb.originY + bb.height / 2;
+          if (bb) {
+            const fx = bb.originX + bb.width / 2;
+            const fy = bb.originY + bb.height / 2;
 
-          let x = fx * scale + offsetX;
-          const y = fy * scale + offsetY;
+            let x = fx * scale + offsetX;
+            const y = fy * scale + offsetY;
 
-          // mirror x for user-facing (so feedback matches what you see)
-          // if (facingMode === "user") x = W - x;
+            // preview is mirrored for user-facing, so mirror X for feedback
+            if (facingMode === "user") x = W - x;
 
-          const faceW = bb.width * scale;
+            const faceW = bb.width * scale;
 
-          const dist = Math.hypot(x - circleCx, y - circleCy);
-          const centerOK = dist <= circleR * 1.05; //  leicht großzügiger, damit es nicht so zappelig ist
-          const sizeOK = faceW >= circleR * 0.9 && faceW <= circleR * 3.2;
+            const dist = Math.hypot(x - circleCx, y - circleCy);
+            const centerOK = dist <= circleR * 1.05;
+            const sizeOK = faceW >= circleR * 0.9 && faceW <= circleR * 3.2;
 
-          ok = centerOK && sizeOK;
+            okFace = centerOK && sizeOK;
+          }
+        } catch {
+          okFace = false;
         }
-      } catch {
-        ok = false;
       }
 
-      setAligned(ok);
+      if (autoMode) setAligned(okFace);
+      else setAligned(null);
 
-      if (ok) {
-  if (goodFramesRef.current === 0) {
-    goodFramesRef.current = Date.now();
-  }
-} else {
-  goodFramesRef.current = 0;
-}
+      // ---- Hand visible (gesture mode)
+      let handVisible = false;
+      if (gestureMode && hl) {
+        try {
+          const hands = hl.detectForVideo(video, performance.now());
+          handVisible = (hands?.landmarks?.length ?? 0) > 0;
+        } catch {
+          handVisible = false;
+        }
+      }
+
+      // stability logic (time-based for consistency)
+      if (autoMode) {
+        if (okFace) {
+          if (goodFramesRef.current === 0) goodFramesRef.current = Date.now();
+        } else {
+          goodFramesRef.current = 0;
+        }
+      } else {
+        goodFramesRef.current = 0;
+      }
 
       const now = Date.now();
       const cooldownMs = 3000;
 
-      const stableEnough = goodFramesRef.current !== 0 && Date.now() - goodFramesRef.current > 600; // mindestens 600ms stabil in Position (ca. 10 Frames), damit es nicht zu schnell auslöst bei zufälligen Erkennungen
-      const cooldownOk = now - lastShotAtRef.current > cooldownMs;
+      // Auto-shot when face aligned long enough
+      const faceStableEnough =
+        autoMode && goodFramesRef.current !== 0 && now - goodFramesRef.current > 600;
 
-      if (stableEnough && cooldownOk && !saving && !starting && countdown === null && autoCountdown === null) {
+      if (
+        faceStableEnough &&
+        now - lastShotAtRef.current > cooldownMs &&
+        autoCountdown === null &&
+        !saving &&
+        !starting
+      ) {
         lastShotAtRef.current = now;
         goodFramesRef.current = 0;
 
-        if (autoDelaySeconds === 0) {
-          takePhoto();
-        } else {
-          startAutoCountdownAndShoot(autoDelaySeconds);
-        }
+        if (autoDelaySeconds === 0) takePhoto();
+        else startAutoCountdownAndShoot(autoDelaySeconds);
+      }
+
+      // Gesture-shot when hand is visible
+      const gestureCooldownMs = 2500;
+      const gestureOk =
+        gestureMode &&
+        handVisible &&
+        now - lastGestureAtRef.current > gestureCooldownMs &&
+        autoCountdown === null &&
+        !saving &&
+        !starting;
+
+      // Optional: require face to be aligned too when autoMode is ON
+      const requireFaceIfAutoOn = !autoMode || okFace;
+
+      if (gestureOk && requireFaceIfAutoOn) {
+        lastGestureAtRef.current = now;
+
+        if (autoDelaySeconds === 0) takePhoto();
+        else startAutoCountdownAndShoot(autoDelaySeconds);
       }
 
       rafRef.current = requestAnimationFrame(loop);
@@ -422,9 +484,18 @@ ctx.restore();
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     };
-  }, [autoMode, facingMode, saving, starting, countdown, autoCountdown, autoDelaySeconds]);
+  }, [
+    autoMode,
+    gestureMode,
+    facingMode,
+    saving,
+    starting,
+    countdown,
+    autoCountdown,
+    autoDelaySeconds,
+  ]);
 
-  // ✅ Stronger visual feedback for head circle
+  // ✅ Strong visual feedback for head circle
   const headBorder =
     autoMode && aligned !== null
       ? aligned
@@ -635,13 +706,7 @@ ctx.restore();
         {/* Auto Mode Button */}
         <button
           onClick={() => {
-            goodFramesRef.current = 0;
-            setAligned(null);
-
-            if (autoCountdownRef.current) window.clearInterval(autoCountdownRef.current);
-            autoCountdownRef.current = null;
-            setAutoCountdown(null);
-
+            resetAutoStuff();
             setAutoMode((v) => !v);
           }}
           disabled={saving || starting || countdown !== null || autoCountdown !== null}
@@ -657,15 +722,37 @@ ctx.restore();
             opacity: saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
           }}
         >
-          🎯 Auto: {autoMode ? "An" : "Aus"}
+          🎯 Auto (Face): {autoMode ? "An" : "Aus"}
         </button>
 
-        {/* Auto Countdown Selector */}
+        {/* Gesture Mode Button */}
+        <button
+          onClick={() => {
+            resetAutoStuff();
+            setGestureMode((v) => !v);
+          }}
+          disabled={saving || starting || countdown !== null || autoCountdown !== null}
+          style={{
+            marginTop: 12,
+            width: "100%",
+            padding: "12px",
+            borderRadius: 12,
+            border: "1px solid var(--border)",
+            background: "transparent",
+            cursor: saving || starting || countdown !== null || autoCountdown !== null ? "not-allowed" : "pointer",
+            fontSize: 16,
+            opacity: saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
+          }}
+        >
+          ✋ Handzeichen-Foto: {gestureMode ? "An" : "Aus"}
+        </button>
+
+        {/* Auto Countdown Selector (works for both auto + gesture) */}
         <button
           onClick={() => {
             setAutoDelaySeconds((s) => (s === 0 ? 2 : s === 2 ? 3 : s === 3 ? 5 : 0));
           }}
-          disabled={saving || starting || countdown !== null || autoCountdown !== null || !autoMode}
+          disabled={saving || starting || countdown !== null || autoCountdown !== null || (!autoMode && !gestureMode)}
           style={{
             marginTop: 12,
             width: "100%",
@@ -674,15 +761,17 @@ ctx.restore();
             border: "1px solid var(--border)",
             background: "transparent",
             cursor:
-              saving || starting || countdown !== null || autoCountdown !== null || !autoMode
+              saving || starting || countdown !== null || autoCountdown !== null || (!autoMode && !gestureMode)
                 ? "not-allowed"
                 : "pointer",
             fontSize: 16,
-            opacity: saving || starting || countdown !== null || autoCountdown !== null || !autoMode ? 0.6 : 1,
+            opacity: saving || starting || countdown !== null || autoCountdown !== null || (!autoMode && !gestureMode)
+              ? 0.6
+              : 1,
           }}
         >
           ⏳ Auto-Countdown: {autoDelaySeconds === 0 ? "Aus" : `${autoDelaySeconds}s`}
-          {!autoMode ? " (Auto aus)" : ""}
+          {!autoMode && !gestureMode ? " (Auto aus)" : ""}
         </button>
 
         {/* Manual Timer Button */}
@@ -690,7 +779,7 @@ ctx.restore();
           onClick={() => {
             setTimerSeconds((t) => (t === 0 ? 3 : t === 3 ? 5 : t === 5 ? 10 : 0));
           }}
-          disabled={saving || starting || countdown !== null || autoCountdown !== null || autoMode}
+          disabled={saving || starting || countdown !== null || autoCountdown !== null || autoMode || gestureMode}
           style={{
             marginTop: 12,
             width: "100%",
@@ -699,15 +788,16 @@ ctx.restore();
             border: "1px solid var(--border)",
             background: "transparent",
             cursor:
-              saving || starting || countdown !== null || autoCountdown !== null || autoMode
+              saving || starting || countdown !== null || autoCountdown !== null || autoMode || gestureMode
                 ? "not-allowed"
                 : "pointer",
             fontSize: 16,
-            opacity: saving || starting || countdown !== null || autoCountdown !== null || autoMode ? 0.6 : 1,
+            opacity:
+              saving || starting || countdown !== null || autoCountdown !== null || autoMode || gestureMode ? 0.6 : 1,
           }}
         >
           ⏱ Timer: {timerSeconds === 0 ? "Aus" : `${timerSeconds}s`}
-          {autoMode ? " (deaktiviert)" : ""}
+          {autoMode || gestureMode ? " (deaktiviert)" : ""}
         </button>
 
         {/* Foto-Button */}
