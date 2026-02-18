@@ -43,16 +43,24 @@ export default function Home() {
 
   const [firstUrl, setFirstUrl] = useState<string | null>(null);
   const [latestUrl, setLatestUrl] = useState<string | null>(null);
+
   const [themeDark, setThemeDark] = useState(false);
 
+  // ✅ WICHTIG: immer sortieren (neueste zuerst), damit links/rechts stimmt
+  const sortedPhotos = useMemo(() => {
+    const copy = [...photos];
+    copy.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return copy;
+  }, [photos]);
 
   const latestPhoto = useMemo(
-    () => (photos.length > 0 ? photos[0] : null),
-    [photos]
+    () => (sortedPhotos.length > 0 ? sortedPhotos[0] : null),
+    [sortedPhotos]
   );
+
   const firstPhoto = useMemo(
-    () => (photos.length > 0 ? photos[photos.length - 1] : null),
-    [photos]
+    () => (sortedPhotos.length > 0 ? sortedPhotos[sortedPhotos.length - 1] : null),
+    [sortedPhotos]
   );
 
   // Center-reveal split (0..100). Start: 50% (beide Hälften sichtbar)
@@ -74,7 +82,7 @@ export default function Home() {
   }
 
   async function refresh() {
-    const all = await getAllPhotos(); // neueste -> älteste
+    const all = await getAllPhotos();
     setPhotos(all);
 
     const stats = computeStats(all);
@@ -93,17 +101,16 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-  // initial state aus <html class="dark"> lesen
-  setThemeDark(document.documentElement.classList.contains("dark"));
-}, []);
+    // initial state aus <html class="dark"> lesen
+    setThemeDark(document.documentElement.classList.contains("dark"));
+  }, []);
 
-function toggleTheme() {
-  const next = !document.documentElement.classList.contains("dark");
-  document.documentElement.classList.toggle("dark", next);
-  localStorage.setItem("theme", next ? "dark" : "light");
-  setThemeDark(next);
-}
-
+  function toggleTheme() {
+    const next = !document.documentElement.classList.contains("dark");
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("theme", next ? "dark" : "light");
+    setThemeDark(next);
+  }
 
   // ✅ Theme beim Start laden
   useEffect(() => {
@@ -127,9 +134,9 @@ function toggleTheme() {
   // check: heute foto?
   useEffect(() => {
     const today = dayKey(new Date());
-    const todayHas = photos.some((p) => dayKey(new Date(p.date)) === today);
+    const todayHas = sortedPhotos.some((p) => dayKey(new Date(p.date)) === today);
     setHasTodayPhoto(todayHas);
-  }, [photos]);
+  }, [sortedPhotos]);
 
   // Auto-refresh wenn Home wieder sichtbar wird
   useEffect(() => {
@@ -266,8 +273,6 @@ function toggleTheme() {
                   zIndex: 50,
                 }}
               >
-               
-
                 <ButtonLink href="/settings">Einstellungen</ButtonLink>
                 <ButtonLink href="/camera">Kamera</ButtonLink>
                 <ButtonLink href="/add">Upload</ButtonLink>
@@ -320,7 +325,7 @@ function toggleTheme() {
       )}
 
       {/* Center-Reveal Compare (edge-to-edge) */}
-      {photos.length === 0 ? (
+      {sortedPhotos.length === 0 ? (
         <Card>
           <p style={{ margin: 0, opacity: 0.8 }}>Noch kein Foto. Mach dein erstes 🙂</p>
         </Card>
@@ -353,7 +358,7 @@ function toggleTheme() {
             }}
             aria-label="Vorher/Nachher Vergleich"
           >
-            {/* Unten: Start */}
+            {/* Unten: Start (ältestes) */}
             {firstUrl && (
               <img
                 src={firstUrl}
@@ -370,7 +375,7 @@ function toggleTheme() {
               />
             )}
 
-            {/* Oben: Heute – per Clip sichtbar */}
+            {/* Oben: Heute (neuestes) */}
             {latestUrl && (
               <img
                 src={latestUrl}
