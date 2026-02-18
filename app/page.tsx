@@ -388,7 +388,7 @@ export default function Home() {
                   height: "100%",
                   objectFit: "cover",
                   display: "block",
-                  clipPath: `inset(0 ${100 - split}% 0 0)`,
+                  clipPath: `inset(0 0 0 ${split}%)`,
                 }}
               />
             )}
