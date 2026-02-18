@@ -489,7 +489,7 @@ export default function CameraPage() {
 
             // ✅ Bedingungen (tuneable)
             const openPalm = extendedCount >= 4; // 4-5 Finger offen
-            const bigEnough = area > 0.07; // ✅ STRIKTER: Hand muss wirklich präsent sein
+            const bigEnough = area > 0.02; // ✅ STRIKTER: Hand muss wirklich präsent sein
             const notEdge =
               minX > 0.06 && maxX < 0.94 && minY > 0.06 && maxY < 0.94; // nicht abgeschnitten
 
