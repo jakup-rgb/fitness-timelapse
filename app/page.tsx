@@ -528,6 +528,9 @@ export default function Home() {
           </div>
         </div>
       )}
+      <div style={{ marginTop: 14 }}>
+  <ButtonLink href="/camera">📸 Foto machen</ButtonLink>
+</div>
     </Container>
   );
 }

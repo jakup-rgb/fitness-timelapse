@@ -520,7 +520,7 @@ export default function CameraPage() {
 
       const gestureOk =
         handStableEnough &&
-        now - lastGestureAtRef.current > gestureCooldownMs &&
+        now - lastGestureAtRef.current > gestureCooldownMs && 
         autoCountdown === null &&
         !saving &&
         !starting;
