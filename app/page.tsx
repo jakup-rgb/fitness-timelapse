@@ -528,8 +528,32 @@ export default function Home() {
           </div>
         </div>
       )}
-      <div style={{ marginTop: 14 }}>
-  <ButtonLink href="/camera">Foto machen</ButtonLink>
+      <div
+  style={{
+    marginTop: 22,
+    display: "flex",
+    justifyContent: "center",
+  }}
+>
+  <a
+    href="/camera"
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "14px 34px",
+      borderRadius: 18,
+      background: "white",
+      color: "black",
+      fontWeight: 700,
+      fontSize: 18,
+      textDecoration: "none",
+      boxShadow: "0 14px 40px rgba(0,0,0,0.35)",
+      border: "1px solid rgba(255,255,255,0.35)",
+    }}
+  >
+    Foto machen
+  </a>
 </div>
     </Container>
   );
