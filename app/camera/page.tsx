@@ -120,98 +120,104 @@ export default function CameraPage() {
   }
 
   // ✅ BODY-only outline from last photo (segmentation)
-  async function makeOutlineFromBlob(blob: Blob) {
-    const seg = segmenterRef.current;
-    if (!seg) return null;
+async function makeOutlineFromBlob(blob: Blob) {
+  const seg = segmenterRef.current;
+  if (!seg) return null;
 
-    const bmp = await createImageBitmap(blob);
-    const w = bmp.width;
-    const h = bmp.height;
+  const bmp = await createImageBitmap(blob);
+  const w = bmp.width;
+  const h = bmp.height;
 
-    // segment person
-    let catMask: any = null;
+  // ✅ segment() liefert Ergebnis per Callback → wir wrappen es in Promise
+  const res: any = await new Promise((resolve, reject) => {
     try {
-      // @ts-ignore - tasks-vision typing can be loose
-      const res = seg.segment(bmp);
-      catMask = res?.categoryMask;
-    } catch {
-      return null;
+      // @ts-ignore
+      seg.segment(bmp, (r: any) => resolve(r));
+    } catch (e) {
+      reject(e);
     }
-    if (!catMask) return null;
+  });
 
-    const maskW = catMask.width ?? w;
-    const maskH = catMask.height ?? h;
+  const catMask = res?.categoryMask;
+  if (!catMask) return null;
 
-    const maskData = new Uint8Array(maskW * maskH);
+  const maskW = catMask.width ?? w;
+  const maskH = catMask.height ?? h;
+
+  // ✅ getAsUint8Array() gibt in Web meist direkt ein Uint8Array zurück
+  let maskData: Uint8Array;
+  try {
     // @ts-ignore
-    catMask.getAsUint8Array(maskData);
+    maskData = catMask.getAsUint8Array();
+  } catch {
+    // Fallback, falls deine Version ein Ziel-Array erwartet
+    const tmp = new Uint8Array(maskW * maskH);
+    // @ts-ignore
+    catMask.getAsUint8Array(tmp);
+    maskData = tmp;
+  }
 
-    const outCanvas = document.createElement("canvas");
-    outCanvas.width = w;
-    outCanvas.height = h;
-    const octx = outCanvas.getContext("2d");
-    if (!octx) return null;
+  const outCanvas = document.createElement("canvas");
+  outCanvas.width = w;
+  outCanvas.height = h;
+  const octx = outCanvas.getContext("2d");
+  if (!octx) return null;
 
-    const img = octx.createImageData(w, h);
-    const out = img.data;
+  const img = octx.createImageData(w, h);
+  const out = img.data;
 
-    const sx = maskW / w;
-    const sy = maskH / h;
+  const sx = maskW / w;
+  const sy = maskH / h;
 
-    // categoryMask is often 0/1, but keep robust
-    const TH = 1;
+  const TH = 1; // robust
+  const outlinePx = 2;
 
-    // outline thickness
-    const outlinePx = 2;
+  const isPerson = (x: number, y: number) => {
+    const mx = Math.max(0, Math.min(maskW - 1, Math.floor(x * sx)));
+    const my = Math.max(0, Math.min(maskH - 1, Math.floor(y * sy)));
+    return maskData[my * maskW + mx] >= TH;
+  };
 
-    const isPerson = (x: number, y: number) => {
-      const mx = Math.max(0, Math.min(maskW - 1, Math.floor(x * sx)));
-      const my = Math.max(0, Math.min(maskH - 1, Math.floor(y * sy)));
-      const v = maskData[my * maskW + mx];
-      return v >= TH;
-    };
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!isPerson(x, y)) continue;
 
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        if (!isPerson(x, y)) continue;
-
-        let edge = false;
-
-        for (let dy = -outlinePx; dy <= outlinePx && !edge; dy++) {
-          for (let dx = -outlinePx; dx <= outlinePx; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const nx = x + dx;
-            const ny = y + dy;
-            if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
-              edge = true;
-              break;
-            }
-            if (!isPerson(nx, ny)) {
-              edge = true;
-              break;
-            }
+      let edge = false;
+      for (let dy = -outlinePx; dy <= outlinePx && !edge; dy++) {
+        for (let dx = -outlinePx; dx <= outlinePx; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+            edge = true;
+            break;
+          }
+          if (!isPerson(nx, ny)) {
+            edge = true;
+            break;
           }
         }
+      }
 
-        if (edge) {
-          const idx = (y * w + x) * 4;
-          out[idx] = 255;
-          out[idx + 1] = 255;
-          out[idx + 2] = 255;
-          out[idx + 3] = 235;
-        }
+      if (edge) {
+        const idx = (y * w + x) * 4;
+        out[idx] = 255;
+        out[idx + 1] = 255;
+        out[idx + 2] = 255;
+        out[idx + 3] = 235;
       }
     }
-
-    octx.putImageData(img, 0, 0);
-
-    const pngBlob: Blob | null = await new Promise((resolve) => {
-      outCanvas.toBlob((b) => resolve(b), "image/png");
-    });
-    if (!pngBlob) return null;
-
-    return URL.createObjectURL(pngBlob);
   }
+
+  octx.putImageData(img, 0, 0);
+
+  const pngBlob: Blob | null = await new Promise((resolve) => {
+    outCanvas.toBlob((b) => resolve(b), "image/png");
+  });
+  if (!pngBlob) return null;
+
+  return URL.createObjectURL(pngBlob);
+}
 
   async function refreshOutline() {
     try {
@@ -946,7 +952,12 @@ export default function CameraPage() {
 
         {/* Outline toggle */}
         <button
-          onClick={() => setOutlineEnabled((v) => !v)}
+          onClick={async () => {
+            setOutlineEnabled((v) => !v);
+            if(!outlineEnabled && !outlineUrl) {
+              await refreshOutline();
+            }
+          }}
           disabled={saving || starting || countdown !== null || autoCountdown !== null}
           style={{
             marginTop: 12,
