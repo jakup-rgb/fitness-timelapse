@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Container, Topbar, ButtonLink, Card } from "../ui";
-import { addPhoto } from "../lib/db";
+import { addPhoto, getAllPhotos } from "../lib/db";
 
 // ✅ MediaPipe
 import {
@@ -46,8 +46,14 @@ export default function CameraPage() {
   const lastGestureAtRef = useRef(0);
   const handStableSinceRef = useRef<number>(0); // ✅ 1s hold
 
+  // 🧅 Outline Guide (edge-only)
+  const [outlineEnabled, setOutlineEnabled] = useState(true);
+  const [outlineUrl, setOutlineUrl] = useState<string | null>(null);
+  const outlineUrlRef = useRef<string | null>(null);
+
   // MediaPipe refs
-  const faceDetectorRef = useRef<FaceDetector | null>(null);
+  const faceDetectorRef = useRef<FaceDetector | null>(null); // VIDEO
+  const faceDetectorImageRef = useRef<FaceDetector | null>(null); // IMAGE (für Outline)
   const handLandmarkerRef = useRef<HandLandmarker | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastVideoTimeRef = useRef<number>(-1);
@@ -112,6 +118,160 @@ export default function CameraPage() {
     }
   }
 
+  function clamp01(n: number) {
+    return Math.max(0, Math.min(1, n));
+  }
+
+  async function makeOutlineFromBlob(blob: Blob) {
+    const fdImg = faceDetectorImageRef.current;
+    if (!fdImg) return null;
+
+    const bmp = await createImageBitmap(blob);
+    const w = bmp.width;
+    const h = bmp.height;
+
+    // 1) Face detect on IMAGE
+    let roi = { x: 0, y: 0, w, h }; // fallback: full image
+    try {
+      // @ts-ignore - tasks-vision typing can be loose
+      const res = fdImg.detect(bmp);
+      const det = res?.detections?.[0];
+      const bb = det?.boundingBox;
+
+      if (bb) {
+        // expand ROI: add shoulders + padding
+        const padX = bb.width * 0.9;
+        const padTop = bb.height * 0.6;
+        const padBottom = bb.height * 2.2;
+
+        const x1 = clamp01((bb.originX - padX) / w) * w;
+        const y1 = clamp01((bb.originY - padTop) / h) * h;
+        const x2 = clamp01((bb.originX + bb.width + padX) / w) * w;
+        const y2 = clamp01((bb.originY + bb.height + padBottom) / h) * h;
+
+        const rx1 = Math.max(0, Math.floor(x1));
+        const ry1 = Math.max(0, Math.floor(y1));
+        const rx2 = Math.min(w, Math.ceil(x2));
+        const ry2 = Math.min(h, Math.ceil(y2));
+
+        roi = { x: rx1, y: ry1, w: rx2 - rx1, h: ry2 - ry1 };
+      }
+    } catch {
+      // ignore -> fallback full image
+    }
+
+    // 2) draw ROI to canvas
+    const srcCanvas = document.createElement("canvas");
+    srcCanvas.width = roi.w;
+    srcCanvas.height = roi.h;
+    const sctx = srcCanvas.getContext("2d", { willReadFrequently: true });
+    if (!sctx) return null;
+
+    sctx.drawImage(bmp, roi.x, roi.y, roi.w, roi.h, 0, 0, roi.w, roi.h);
+
+    // 3) Sobel edge detection -> transparent bg + white edges
+    const img = sctx.getImageData(0, 0, roi.w, roi.h);
+    const data = img.data;
+
+    // grayscale
+    const gray = new Float32Array(roi.w * roi.h);
+    for (let i = 0, p = 0; i < gray.length; i++, p += 4) {
+      const r = data[p];
+      const g = data[p + 1];
+      const b = data[p + 2];
+      gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+    }
+
+    // Sobel kernels
+    const gxK = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+    const gyK = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+
+    const out = new Uint8ClampedArray(roi.w * roi.h * 4);
+
+    // Tuneables (feel free to tweak)
+    const threshold = 72; // höher = weniger Linien, niedriger = mehr Linien
+    const lineAlpha = 235;
+
+    for (let y = 1; y < roi.h - 1; y++) {
+      for (let x = 1; x < roi.w - 1; x++) {
+        let gx = 0;
+        let gy = 0;
+        let k = 0;
+
+        for (let ky = -1; ky <= 1; ky++) {
+          for (let kx = -1; kx <= 1; kx++) {
+            const v = gray[(y + ky) * roi.w + (x + kx)];
+            gx += v * gxK[k];
+            gy += v * gyK[k];
+            k++;
+          }
+        }
+
+        const mag = Math.sqrt(gx * gx + gy * gy);
+        const idx = (y * roi.w + x) * 4;
+
+        if (mag > threshold) {
+          out[idx] = 255;
+          out[idx + 1] = 255;
+          out[idx + 2] = 255;
+          out[idx + 3] = lineAlpha;
+        } else {
+          out[idx] = 0;
+          out[idx + 1] = 0;
+          out[idx + 2] = 0;
+          out[idx + 3] = 0; // transparent
+        }
+      }
+    }
+
+    // 4) draw edges back into full-size transparent canvas
+    const full = document.createElement("canvas");
+    full.width = w;
+    full.height = h;
+    const fctx = full.getContext("2d");
+    if (!fctx) return null;
+
+    const edgeCanvas = document.createElement("canvas");
+    edgeCanvas.width = roi.w;
+    edgeCanvas.height = roi.h;
+    const ectx = edgeCanvas.getContext("2d");
+    if (!ectx) return null;
+
+    const edgeImg = new ImageData(out, roi.w, roi.h);
+    ectx.putImageData(edgeImg, 0, 0);
+
+    fctx.drawImage(edgeCanvas, roi.x, roi.y);
+
+    const pngBlob: Blob | null = await new Promise((resolve) => {
+      full.toBlob((b) => resolve(b), "image/png");
+    });
+    if (!pngBlob) return null;
+
+    return URL.createObjectURL(pngBlob);
+  }
+
+  async function refreshOutline() {
+    try {
+      // cleanup old
+      if (outlineUrlRef.current) {
+        URL.revokeObjectURL(outlineUrlRef.current);
+        outlineUrlRef.current = null;
+      }
+
+      const all = await getAllPhotos();
+      if (all.length === 0) {
+        setOutlineUrl(null);
+        return;
+      }
+
+      const url = await makeOutlineFromBlob(all[0].blob);
+      setOutlineUrl(url);
+      outlineUrlRef.current = url;
+    } catch {
+      setOutlineUrl(null);
+    }
+  }
+
   // ✅ MediaPipe init (einmal)
   useEffect(() => {
     let cancelled = false;
@@ -130,7 +290,7 @@ export default function CameraPage() {
         const handModel =
           "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task";
 
-        // FaceDetector (GPU try -> CPU fallback)
+        // FaceDetector (GPU try -> CPU fallback) - VIDEO
         try {
           const fd = await FaceDetector.createFromOptions(vision, {
             baseOptions: { modelAssetPath: faceModel, delegate: "GPU" as any },
@@ -147,6 +307,14 @@ export default function CameraPage() {
           if (!cancelled) faceDetectorRef.current = fd;
         }
 
+        // ✅ IMAGE FaceDetector (für Outline)
+        const fdImg = await FaceDetector.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: faceModel, delegate: "CPU" as any },
+          runningMode: "IMAGE",
+          minDetectionConfidence: 0.6,
+        });
+        if (!cancelled) faceDetectorImageRef.current = fdImg;
+
         // HandLandmarker (CPU = am stabilsten)
         const hl = await HandLandmarker.createFromOptions(vision, {
           baseOptions: { modelAssetPath: handModel, delegate: "CPU" as any },
@@ -157,6 +325,11 @@ export default function CameraPage() {
           minTrackingConfidence: 0.6,
         });
         if (!cancelled) handLandmarkerRef.current = hl;
+
+        // outline initial load once vision is ready
+        if (!cancelled) {
+          await refreshOutline();
+        }
       } catch (e) {
         console.error("Vision init error:", e);
         if (!cancelled) setError("Face/Hand-Assist konnte nicht geladen werden.");
@@ -167,16 +340,28 @@ export default function CameraPage() {
 
     return () => {
       cancelled = true;
+
       try {
         faceDetectorRef.current?.close();
       } catch {}
       faceDetectorRef.current = null;
 
       try {
+        faceDetectorImageRef.current?.close();
+      } catch {}
+      faceDetectorImageRef.current = null;
+
+      try {
         handLandmarkerRef.current?.close();
       } catch {}
       handLandmarkerRef.current = null;
+
+      if (outlineUrlRef.current) {
+        URL.revokeObjectURL(outlineUrlRef.current);
+        outlineUrlRef.current = null;
+      }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -238,6 +423,10 @@ export default function CameraPage() {
         try {
           if (!blob) throw new Error("Blob ist leer");
           await addPhoto(blob);
+
+          // ✅ update outline for next time
+          await refreshOutline();
+
           router.push("/");
         } catch {
           setError("Speichern hat nicht geklappt.");
@@ -447,7 +636,7 @@ export default function CameraPage() {
         else startAutoCountdownAndShoot(autoDelaySeconds);
       }
 
-      // ---- Hand trigger (gesture mode): nur offene Handfläche (✋) + groß genug + nicht am Rand
+      // ---- Hand trigger (gesture mode): offene Handfläche (✋) + groß genug + nicht am Rand
       let handTrigger = false;
 
       if (gestureMode && hl) {
@@ -458,7 +647,7 @@ export default function CameraPage() {
           if (lm && lm.length >= 21) {
             const wrist = lm[0];
 
-            // Tips: 4,8,12,16,20  | "PIPs" näher zur Hand: 3,6,10,14,18
+            // Tips: 4,8,12,16,20  | PIPs: 3,6,10,14,18
             const tips = [4, 8, 12, 16, 20];
             const pips = [3, 6, 10, 14, 18];
 
@@ -487,11 +676,11 @@ export default function CameraPage() {
             const boxH = maxY - minY;
             const area = boxW * boxH;
 
-            // ✅ Bedingungen (tuneable)
-            const openPalm = extendedCount >= 4; // 4-5 Finger offen
-            const bigEnough = area > 0.02; // ✅ STRIKTER: Hand muss wirklich präsent sein
+            // ✅ Bedingungen
+            const openPalm = extendedCount >= 5; // ✅ wirklich offene Hand
+            const bigEnough = area > 0.02; // weiter weg ok
             const notEdge =
-              minX > 0.06 && maxX < 0.94 && minY > 0.06 && maxY < 0.94; // nicht abgeschnitten
+              minX > 0.06 && maxX < 0.94 && minY > 0.06 && maxY < 0.94;
 
             handTrigger = openPalm && bigEnough && notEdge;
           }
@@ -500,7 +689,7 @@ export default function CameraPage() {
         }
       }
 
-      // ✅ Stabilität über Zeit: 1 Sekunde halten (wie du wolltest)
+      // ✅ Stabilität über Zeit: 1 Sekunde halten
       if (gestureMode) {
         if (handTrigger) {
           if (handStableSinceRef.current === 0) handStableSinceRef.current = now;
@@ -514,13 +703,13 @@ export default function CameraPage() {
       const handStableEnough =
         gestureMode &&
         handStableSinceRef.current !== 0 &&
-        now - handStableSinceRef.current > 1000; // ✅ 1s halten
+        now - handStableSinceRef.current > 1000;
 
       const gestureCooldownMs = 3000;
 
       const gestureOk =
         handStableEnough &&
-        now - lastGestureAtRef.current > gestureCooldownMs && 
+        now - lastGestureAtRef.current > gestureCooldownMs &&
         autoCountdown === null &&
         !saving &&
         !starting;
@@ -611,6 +800,26 @@ export default function CameraPage() {
             }}
           />
 
+          {/* 🧅 Outline overlay (nur Umriss) */}
+          {outlineEnabled && outlineUrl && (
+            <img
+              src={outlineUrl}
+              alt="Outline guide"
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                pointerEvents: "none",
+                opacity: 0.95,
+                transform: facingMode === "user" ? "scaleX(-1)" : "none",
+                // leichte Betonung damit Linien „knackiger“ wirken
+                filter: "contrast(1.15) brightness(1.05)",
+              }}
+            />
+          )}
+
           {/* Kamera wechseln */}
           <button
             onClick={toggleCamera}
@@ -631,7 +840,9 @@ export default function CameraPage() {
                   : "pointer",
               fontSize: 14,
               opacity:
-                saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
+                saving || starting || countdown !== null || autoCountdown !== null
+                  ? 0.6
+                  : 1,
               backdropFilter: "blur(6px)",
               WebkitBackdropFilter: "blur(6px)",
             }}
@@ -765,6 +976,29 @@ export default function CameraPage() {
           )}
         </div>
 
+        {/* Outline toggle */}
+        <button
+          onClick={() => setOutlineEnabled((v) => !v)}
+          disabled={saving || starting || countdown !== null || autoCountdown !== null}
+          style={{
+            marginTop: 12,
+            width: "100%",
+            padding: "12px",
+            borderRadius: 12,
+            border: "1px solid var(--border)",
+            background: "transparent",
+            cursor:
+              saving || starting || countdown !== null || autoCountdown !== null
+                ? "not-allowed"
+                : "pointer",
+            fontSize: 16,
+            opacity:
+              saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
+          }}
+        >
+          👤 Outline Guide: {outlineEnabled ? "An" : "Aus"}
+        </button>
+
         {/* Auto Mode Button */}
         <button
           onClick={() => {
@@ -821,7 +1055,9 @@ export default function CameraPage() {
         {/* Auto Countdown Selector (works for both auto + gesture) */}
         <button
           onClick={() => {
-            setAutoDelaySeconds((s) => (s === 0 ? 2 : s === 2 ? 3 : s === 3 ? 5 : 0));
+            setAutoDelaySeconds((s) =>
+              s === 0 ? 2 : s === 2 ? 3 : s === 3 ? 5 : 0
+            );
           }}
           disabled={
             saving ||
