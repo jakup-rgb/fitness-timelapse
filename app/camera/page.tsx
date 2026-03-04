@@ -787,9 +787,10 @@ async function makeOutlineFromBlob(blob: Blob) {
                 height: "100%",
                 objectFit: "cover",
                 pointerEvents: "none",
-                opacity: 0.95,
+                opacity: 0.92,
                 transform: facingMode === "user" ? "scaleX(-1)" : "none",
-                filter: "contrast(1.15) brightness(1.05)",
+                mixBlendMode: "screen",
+                filter: "blur(0.4px) contrast(1.35) brightness(1.08 ) drop-shadow(0 0 10px rgba(255,255,255,0.35))",
               }}
             />
           )}
