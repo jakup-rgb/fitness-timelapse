@@ -10,6 +10,7 @@ import {
   FaceDetector,
   FilesetResolver,
   HandLandmarker,
+  ImageSegmenter,
 } from "@mediapipe/tasks-vision";
 
 type FacingMode = "user" | "environment";
@@ -46,15 +47,15 @@ export default function CameraPage() {
   const lastGestureAtRef = useRef(0);
   const handStableSinceRef = useRef<number>(0); // ✅ 1s hold
 
-  // 🧅 Outline Guide (edge-only)
+  // 🧅 Outline Guide (BODY-only via segmentation)
   const [outlineEnabled, setOutlineEnabled] = useState(true);
   const [outlineUrl, setOutlineUrl] = useState<string | null>(null);
   const outlineUrlRef = useRef<string | null>(null);
 
   // MediaPipe refs
   const faceDetectorRef = useRef<FaceDetector | null>(null); // VIDEO
-  const faceDetectorImageRef = useRef<FaceDetector | null>(null); // IMAGE (für Outline)
   const handLandmarkerRef = useRef<HandLandmarker | null>(null);
+  const segmenterRef = useRef<ImageSegmenter | null>(null); // IMAGE (für Body outline)
   const rafRef = useRef<number | null>(null);
   const lastVideoTimeRef = useRef<number>(-1);
 
@@ -118,195 +119,94 @@ export default function CameraPage() {
     }
   }
 
-  function clamp01(n: number) {
-    return Math.max(0, Math.min(1, n));
-  }
-
-  // ✅ Outline: Sobel edges, aber nur innerhalb einer Person-Maske (Kopf + Torso Ellipsen)
+  // ✅ BODY-only outline from last photo (segmentation)
   async function makeOutlineFromBlob(blob: Blob) {
-    const fdImg = faceDetectorImageRef.current;
-    if (!fdImg) return null;
+    const seg = segmenterRef.current;
+    if (!seg) return null;
 
     const bmp = await createImageBitmap(blob);
     const w = bmp.width;
     const h = bmp.height;
 
-    // ✅ persist face box across the whole function (TS-safe)
-    let faceBox: { x: number; y: number; w: number; h: number } | null = null;
-
-    // 1) Face detect on IMAGE
-    let roi = { x: 0, y: 0, w, h }; // fallback: full image
+    // segment person
+    let catMask: any = null;
     try {
       // @ts-ignore - tasks-vision typing can be loose
-      const res = fdImg.detect(bmp);
-      const det = res?.detections?.[0];
-      const bb = det?.boundingBox;
-
-      if (bb) {
-        faceBox = { x: bb.originX, y: bb.originY, w: bb.width, h: bb.height };
-
-        // expand ROI: add shoulders + padding
-        const padX = bb.width * 0.9;
-        const padTop = bb.height * 0.6;
-        const padBottom = bb.height * 2.2;
-
-        const x1 = clamp01((bb.originX - padX) / w) * w;
-        const y1 = clamp01((bb.originY - padTop) / h) * h;
-        const x2 = clamp01((bb.originX + bb.width + padX) / w) * w;
-        const y2 = clamp01((bb.originY + bb.height + padBottom) / h) * h;
-
-        const rx1 = Math.max(0, Math.floor(x1));
-        const ry1 = Math.max(0, Math.floor(y1));
-        const rx2 = Math.min(w, Math.ceil(x2));
-        const ry2 = Math.min(h, Math.ceil(y2));
-
-        roi = { x: rx1, y: ry1, w: rx2 - rx1, h: ry2 - ry1 };
-      }
+      const res = seg.segment(bmp);
+      catMask = res?.categoryMask;
     } catch {
-      // ignore -> fallback full image
+      return null;
     }
+    if (!catMask) return null;
 
-    // 2) draw ROI to canvas
-    const srcCanvas = document.createElement("canvas");
-    srcCanvas.width = roi.w;
-    srcCanvas.height = roi.h;
-    const sctx = srcCanvas.getContext("2d", { willReadFrequently: true });
-    if (!sctx) return null;
+    const maskW = catMask.width ?? w;
+    const maskH = catMask.height ?? h;
 
-    sctx.drawImage(bmp, roi.x, roi.y, roi.w, roi.h, 0, 0, roi.w, roi.h);
+    const maskData = new Uint8Array(maskW * maskH);
+    // @ts-ignore
+    catMask.getAsUint8Array(maskData);
 
-    // 3) Sobel edge detection -> transparent bg + white edges
-    const img = sctx.getImageData(0, 0, roi.w, roi.h);
-    const data = img.data;
+    const outCanvas = document.createElement("canvas");
+    outCanvas.width = w;
+    outCanvas.height = h;
+    const octx = outCanvas.getContext("2d");
+    if (!octx) return null;
 
-    // grayscale
-    const gray = new Float32Array(roi.w * roi.h);
-    for (let i = 0, p = 0; i < gray.length; i++, p += 4) {
-      const r = data[p];
-      const g = data[p + 1];
-      const b = data[p + 2];
-      gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
-    }
+    const img = octx.createImageData(w, h);
+    const out = img.data;
 
-    // Sobel kernels
-    const gxK = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
-    const gyK = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+    const sx = maskW / w;
+    const sy = maskH / h;
 
-    const out = new Uint8ClampedArray(roi.w * roi.h * 4);
+    // categoryMask is often 0/1, but keep robust
+    const TH = 1;
 
-    // Tuneables
-    const threshold = 78; // etwas höher = weniger Background-Linien
-    const lineAlpha = 235;
+    // outline thickness
+    const outlinePx = 2;
 
-    // Precompute mask params once (ROI coords)
-    let mask = null as
-      | null
-      | {
-          faceCx: number;
-          faceCy: number;
-          headRx: number;
-          headRy: number;
-          torsoCx: number;
-          torsoCy: number;
-          torsoRx: number;
-          torsoRy: number;
-          cutTopY: number;
-          cutBottomY: number;
-        };
-
-    if (faceBox) {
-      const faceCx = faceBox.x + faceBox.w / 2 - roi.x;
-      const faceCy = faceBox.y + faceBox.h / 2 - roi.y;
-
-      // Kopf etwas enger, Torso etwas breiter
-      const headRx = faceBox.w * 0.9;
-      const headRy = faceBox.h * 1.05;
-
-      const torsoCx = faceCx;
-      const torsoCy = faceCy + faceBox.h * 1.75;
-      const torsoRx = faceBox.w * 1.95;
-      const torsoRy = faceBox.h * 2.65;
-
-      const cutTopY = faceCy - faceBox.h * 1.25; // Hintergrund oben weg
-      const cutBottomY = faceCy + faceBox.h * 4.5; // nicht endlos nach unten
-
-      mask = { faceCx, faceCy, headRx, headRy, torsoCx, torsoCy, torsoRx, torsoRy, cutTopY, cutBottomY };
-    }
-
-    const inEllipse = (px: number, py: number, cx: number, cy: number, rx: number, ry: number) => {
-      const dx = (px - cx) / rx;
-      const dy = (py - cy) / ry;
-      return dx * dx + dy * dy <= 1.0;
+    const isPerson = (x: number, y: number) => {
+      const mx = Math.max(0, Math.min(maskW - 1, Math.floor(x * sx)));
+      const my = Math.max(0, Math.min(maskH - 1, Math.floor(y * sy)));
+      const v = maskData[my * maskW + mx];
+      return v >= TH;
     };
 
-    for (let y = 1; y < roi.h - 1; y++) {
-      for (let x = 1; x < roi.w - 1; x++) {
-        let gx = 0;
-        let gy = 0;
-        let k = 0;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (!isPerson(x, y)) continue;
 
-        for (let ky = -1; ky <= 1; ky++) {
-          for (let kx = -1; kx <= 1; kx++) {
-            const v = gray[(y + ky) * roi.w + (x + kx)];
-            gx += v * gxK[k];
-            gy += v * gyK[k];
-            k++;
+        let edge = false;
+
+        for (let dy = -outlinePx; dy <= outlinePx && !edge; dy++) {
+          for (let dx = -outlinePx; dx <= outlinePx; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+              edge = true;
+              break;
+            }
+            if (!isPerson(nx, ny)) {
+              edge = true;
+              break;
+            }
           }
         }
 
-        const mag = Math.sqrt(gx * gx + gy * gy);
-        const idx = (y * roi.w + x) * 4;
-
-        // --- Person Maske ---
-        let inMask = true;
-        if (mask) {
-          const px = x;
-          const py = y;
-
-          // harte Cuts
-          if (py < mask.cutTopY || py > mask.cutBottomY) {
-            inMask = false;
-          } else {
-            const inHead = inEllipse(px, py, mask.faceCx, mask.faceCy, mask.headRx, mask.headRy);
-            const inTorso = inEllipse(px, py, mask.torsoCx, mask.torsoCy, mask.torsoRx, mask.torsoRy);
-            inMask = inHead || inTorso;
-          }
-        }
-
-        if (mag > threshold && inMask) {
+        if (edge) {
+          const idx = (y * w + x) * 4;
           out[idx] = 255;
           out[idx + 1] = 255;
           out[idx + 2] = 255;
-          out[idx + 3] = lineAlpha;
-        } else {
-          out[idx] = 0;
-          out[idx + 1] = 0;
-          out[idx + 2] = 0;
-          out[idx + 3] = 0;
+          out[idx + 3] = 235;
         }
       }
     }
 
-    // 4) draw edges back into full-size transparent canvas
-    const full = document.createElement("canvas");
-    full.width = w;
-    full.height = h;
-    const fctx = full.getContext("2d");
-    if (!fctx) return null;
-
-    const edgeCanvas = document.createElement("canvas");
-    edgeCanvas.width = roi.w;
-    edgeCanvas.height = roi.h;
-    const ectx = edgeCanvas.getContext("2d");
-    if (!ectx) return null;
-
-    const edgeImg = new ImageData(out, roi.w, roi.h);
-    ectx.putImageData(edgeImg, 0, 0);
-
-    fctx.drawImage(edgeCanvas, roi.x, roi.y);
+    octx.putImageData(img, 0, 0);
 
     const pngBlob: Blob | null = await new Promise((resolve) => {
-      full.toBlob((b) => resolve(b), "image/png");
+      outCanvas.toBlob((b) => resolve(b), "image/png");
     });
     if (!pngBlob) return null;
 
@@ -315,7 +215,6 @@ export default function CameraPage() {
 
   async function refreshOutline() {
     try {
-      // cleanup old
       if (outlineUrlRef.current) {
         URL.revokeObjectURL(outlineUrlRef.current);
         outlineUrlRef.current = null;
@@ -345,15 +244,17 @@ export default function CameraPage() {
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
         const vision = await FilesetResolver.forVisionTasks(wasmRoot);
 
-        // Face model (.tflite)
         const faceModel =
           "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite";
 
-        // Hand model (.task)
         const handModel =
           "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task";
 
-        // FaceDetector (GPU try -> CPU fallback) - VIDEO
+        // ✅ Selfie segmentation model (body-only outline)
+        const selfieSegModel =
+          "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite";
+
+        // FaceDetector (VIDEO)
         try {
           const fd = await FaceDetector.createFromOptions(vision, {
             baseOptions: { modelAssetPath: faceModel, delegate: "GPU" as any },
@@ -370,15 +271,7 @@ export default function CameraPage() {
           if (!cancelled) faceDetectorRef.current = fd;
         }
 
-        // ✅ IMAGE FaceDetector (für Outline)
-        const fdImg = await FaceDetector.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: faceModel, delegate: "CPU" as any },
-          runningMode: "IMAGE",
-          minDetectionConfidence: 0.6,
-        });
-        if (!cancelled) faceDetectorImageRef.current = fdImg;
-
-        // HandLandmarker (CPU = am stabilsten)
+        // HandLandmarker (VIDEO)
         const hl = await HandLandmarker.createFromOptions(vision, {
           baseOptions: { modelAssetPath: handModel, delegate: "CPU" as any },
           runningMode: "VIDEO",
@@ -389,7 +282,14 @@ export default function CameraPage() {
         });
         if (!cancelled) handLandmarkerRef.current = hl;
 
-        // outline initial load once vision is ready
+        // ImageSegmenter (IMAGE) for body mask
+        const seg = await ImageSegmenter.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: selfieSegModel, delegate: "CPU" as any },
+          runningMode: "IMAGE",
+          outputCategoryMask: true,
+        });
+        if (!cancelled) segmenterRef.current = seg;
+
         if (!cancelled) {
           await refreshOutline();
         }
@@ -410,14 +310,14 @@ export default function CameraPage() {
       faceDetectorRef.current = null;
 
       try {
-        faceDetectorImageRef.current?.close();
-      } catch {}
-      faceDetectorImageRef.current = null;
-
-      try {
         handLandmarkerRef.current?.close();
       } catch {}
       handLandmarkerRef.current = null;
+
+      try {
+        segmenterRef.current?.close();
+      } catch {}
+      segmenterRef.current = null;
 
       if (outlineUrlRef.current) {
         URL.revokeObjectURL(outlineUrlRef.current);
@@ -561,7 +461,8 @@ export default function CameraPage() {
         if (c === null) return null;
 
         if (c <= 1) {
-          if (autoCountdownRef.current) window.clearInterval(autoCountdownRef.current);
+          if (autoCountdownRef.current)
+            window.clearInterval(autoCountdownRef.current);
           autoCountdownRef.current = null;
 
           setTimeout(() => {
@@ -599,7 +500,14 @@ export default function CameraPage() {
       const vh = video.videoHeight;
 
       // pause while busy
-      if (!vw || !vh || starting || saving || countdown !== null || autoCountdown !== null) {
+      if (
+        !vw ||
+        !vh ||
+        starting ||
+        saving ||
+        countdown !== null ||
+        autoCountdown !== null
+      ) {
         rafRef.current = requestAnimationFrame(loop);
         return;
       }
@@ -683,7 +591,9 @@ export default function CameraPage() {
 
       // Auto-shot when face aligned long enough
       const faceStableEnough =
-        autoMode && goodSinceRef.current !== 0 && now - goodSinceRef.current > 600;
+        autoMode &&
+        goodSinceRef.current !== 0 &&
+        now - goodSinceRef.current > 600;
 
       if (
         faceStableEnough &&
@@ -710,11 +620,9 @@ export default function CameraPage() {
           if (lm && lm.length >= 21) {
             const wrist = lm[0];
 
-            // Tips: 4,8,12,16,20  | PIPs: 3,6,10,14,18
             const tips = [4, 8, 12, 16, 20];
             const pips = [3, 6, 10, 14, 18];
 
-            // Finger "extended": tip weiter weg vom wrist als pip
             let extendedCount = 0;
             for (let i = 0; i < 5; i++) {
               const tip = lm[tips[i]];
@@ -724,7 +632,6 @@ export default function CameraPage() {
               if (dTip > dPip + 0.02) extendedCount++;
             }
 
-            // Handgröße: Bounding box in normalized coords
             let minX = 1,
               minY = 1,
               maxX = 0,
@@ -739,9 +646,8 @@ export default function CameraPage() {
             const boxH = maxY - minY;
             const area = boxW * boxH;
 
-            // ✅ Bedingungen
-            const openPalm = extendedCount >= 5; // ✅ wirklich offene Hand
-            const bigEnough = area > 0.02; // weiter weg ok
+            const openPalm = extendedCount >= 5;
+            const bigEnough = area > 0.02;
             const notEdge =
               minX > 0.06 && maxX < 0.94 && minY > 0.06 && maxY < 0.94;
 
@@ -755,7 +661,8 @@ export default function CameraPage() {
       // ✅ Stabilität über Zeit: 1 Sekunde halten
       if (gestureMode) {
         if (handTrigger) {
-          if (handStableSinceRef.current === 0) handStableSinceRef.current = now;
+          if (handStableSinceRef.current === 0)
+            handStableSinceRef.current = now;
         } else {
           handStableSinceRef.current = 0;
         }
@@ -777,7 +684,6 @@ export default function CameraPage() {
         !saving &&
         !starting;
 
-      // ✅ Hand soll AUCH ohne Face-Align auslösen
       if (gestureOk) {
         lastGestureAtRef.current = now;
         handStableSinceRef.current = 0;
@@ -863,7 +769,7 @@ export default function CameraPage() {
             }}
           />
 
-          {/* 🧅 Outline overlay (nur Umriss) */}
+          {/* 🧅 Outline overlay (BODY-only) */}
           {outlineEnabled && outlineUrl && (
             <img
               src={outlineUrl}
@@ -1055,9 +961,7 @@ export default function CameraPage() {
                 : "pointer",
             fontSize: 16,
             opacity:
-              saving || starting || countdown !== null || autoCountdown !== null
-                ? 0.6
-                : 1,
+              saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
           }}
         >
           👤 Outline Guide: {outlineEnabled ? "An" : "Aus"}
@@ -1083,9 +987,7 @@ export default function CameraPage() {
                 : "pointer",
             fontSize: 16,
             opacity:
-              saving || starting || countdown !== null || autoCountdown !== null
-                ? 0.6
-                : 1,
+              saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
           }}
         >
           🎯 Auto (Face): {autoMode ? "An" : "Aus"}
@@ -1111,9 +1013,7 @@ export default function CameraPage() {
                 : "pointer",
             fontSize: 16,
             opacity:
-              saving || starting || countdown !== null || autoCountdown !== null
-                ? 0.6
-                : 1,
+              saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
           }}
         >
           ✋ Handzeichen-Foto: {gestureMode ? "An" : "Aus"}{" "}
