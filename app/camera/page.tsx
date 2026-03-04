@@ -122,6 +122,7 @@ export default function CameraPage() {
     return Math.max(0, Math.min(1, n));
   }
 
+  // ✅ Outline: Sobel edges, aber nur innerhalb einer Person-Maske (Kopf + Torso Ellipsen)
   async function makeOutlineFromBlob(blob: Blob) {
     const fdImg = faceDetectorImageRef.current;
     if (!fdImg) return null;
@@ -129,6 +130,9 @@ export default function CameraPage() {
     const bmp = await createImageBitmap(blob);
     const w = bmp.width;
     const h = bmp.height;
+
+    // ✅ persist face box across the whole function (TS-safe)
+    let faceBox: { x: number; y: number; w: number; h: number } | null = null;
 
     // 1) Face detect on IMAGE
     let roi = { x: 0, y: 0, w, h }; // fallback: full image
@@ -139,6 +143,8 @@ export default function CameraPage() {
       const bb = det?.boundingBox;
 
       if (bb) {
+        faceBox = { x: bb.originX, y: bb.originY, w: bb.width, h: bb.height };
+
         // expand ROI: add shoulders + padding
         const padX = bb.width * 0.9;
         const padTop = bb.height * 0.6;
@@ -188,9 +194,50 @@ export default function CameraPage() {
 
     const out = new Uint8ClampedArray(roi.w * roi.h * 4);
 
-    // Tuneables (feel free to tweak)
-    const threshold = 72; // höher = weniger Linien, niedriger = mehr Linien
+    // Tuneables
+    const threshold = 78; // etwas höher = weniger Background-Linien
     const lineAlpha = 235;
+
+    // Precompute mask params once (ROI coords)
+    let mask = null as
+      | null
+      | {
+          faceCx: number;
+          faceCy: number;
+          headRx: number;
+          headRy: number;
+          torsoCx: number;
+          torsoCy: number;
+          torsoRx: number;
+          torsoRy: number;
+          cutTopY: number;
+          cutBottomY: number;
+        };
+
+    if (faceBox) {
+      const faceCx = faceBox.x + faceBox.w / 2 - roi.x;
+      const faceCy = faceBox.y + faceBox.h / 2 - roi.y;
+
+      // Kopf etwas enger, Torso etwas breiter
+      const headRx = faceBox.w * 0.9;
+      const headRy = faceBox.h * 1.05;
+
+      const torsoCx = faceCx;
+      const torsoCy = faceCy + faceBox.h * 1.75;
+      const torsoRx = faceBox.w * 1.95;
+      const torsoRy = faceBox.h * 2.65;
+
+      const cutTopY = faceCy - faceBox.h * 1.25; // Hintergrund oben weg
+      const cutBottomY = faceCy + faceBox.h * 4.5; // nicht endlos nach unten
+
+      mask = { faceCx, faceCy, headRx, headRy, torsoCx, torsoCy, torsoRx, torsoRy, cutTopY, cutBottomY };
+    }
+
+    const inEllipse = (px: number, py: number, cx: number, cy: number, rx: number, ry: number) => {
+      const dx = (px - cx) / rx;
+      const dy = (py - cy) / ry;
+      return dx * dx + dy * dy <= 1.0;
+    };
 
     for (let y = 1; y < roi.h - 1; y++) {
       for (let x = 1; x < roi.w - 1; x++) {
@@ -210,7 +257,23 @@ export default function CameraPage() {
         const mag = Math.sqrt(gx * gx + gy * gy);
         const idx = (y * roi.w + x) * 4;
 
-        if (mag > threshold) {
+        // --- Person Maske ---
+        let inMask = true;
+        if (mask) {
+          const px = x;
+          const py = y;
+
+          // harte Cuts
+          if (py < mask.cutTopY || py > mask.cutBottomY) {
+            inMask = false;
+          } else {
+            const inHead = inEllipse(px, py, mask.faceCx, mask.faceCy, mask.headRx, mask.headRy);
+            const inTorso = inEllipse(px, py, mask.torsoCx, mask.torsoCy, mask.torsoRx, mask.torsoRy);
+            inMask = inHead || inTorso;
+          }
+        }
+
+        if (mag > threshold && inMask) {
           out[idx] = 255;
           out[idx + 1] = 255;
           out[idx + 2] = 255;
@@ -219,7 +282,7 @@ export default function CameraPage() {
           out[idx] = 0;
           out[idx + 1] = 0;
           out[idx + 2] = 0;
-          out[idx + 3] = 0; // transparent
+          out[idx + 3] = 0;
         }
       }
     }
@@ -814,7 +877,6 @@ export default function CameraPage() {
                 pointerEvents: "none",
                 opacity: 0.95,
                 transform: facingMode === "user" ? "scaleX(-1)" : "none",
-                // leichte Betonung damit Linien „knackiger“ wirken
                 filter: "contrast(1.15) brightness(1.05)",
               }}
             />
@@ -993,7 +1055,9 @@ export default function CameraPage() {
                 : "pointer",
             fontSize: 16,
             opacity:
-              saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
+              saving || starting || countdown !== null || autoCountdown !== null
+                ? 0.6
+                : 1,
           }}
         >
           👤 Outline Guide: {outlineEnabled ? "An" : "Aus"}
@@ -1019,7 +1083,9 @@ export default function CameraPage() {
                 : "pointer",
             fontSize: 16,
             opacity:
-              saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
+              saving || starting || countdown !== null || autoCountdown !== null
+                ? 0.6
+                : 1,
           }}
         >
           🎯 Auto (Face): {autoMode ? "An" : "Aus"}
@@ -1045,7 +1111,9 @@ export default function CameraPage() {
                 : "pointer",
             fontSize: 16,
             opacity:
-              saving || starting || countdown !== null || autoCountdown !== null ? 0.6 : 1,
+              saving || starting || countdown !== null || autoCountdown !== null
+                ? 0.6
+                : 1,
           }}
         >
           ✋ Handzeichen-Foto: {gestureMode ? "An" : "Aus"}{" "}
@@ -1055,9 +1123,7 @@ export default function CameraPage() {
         {/* Auto Countdown Selector (works for both auto + gesture) */}
         <button
           onClick={() => {
-            setAutoDelaySeconds((s) =>
-              s === 0 ? 2 : s === 2 ? 3 : s === 3 ? 5 : 0
-            );
+            setAutoDelaySeconds((s) => (s === 0 ? 2 : s === 2 ? 3 : s === 3 ? 5 : 0));
           }}
           disabled={
             saving ||
